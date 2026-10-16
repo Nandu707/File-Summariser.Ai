@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -115,6 +116,54 @@ def delete_document(doc_id: str):
         except Exception as fe:
             print(f"[main] Notice deleting from Firebase: {fe}")
     return {"message": "Document deleted successfully", "doc_id": doc_id}
+
+@app.get("/api/documents/{doc_id}/pages/{page_num}")
+async def get_document_page(doc_id: str, page_num: int):
+    """
+    Returns specific page content, total page count, document filename, and file viewing URLs.
+    """
+    if not doc_id.strip():
+        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
+    if page_num < 1:
+        raise HTTPException(status_code=400, detail="page_num must be >= 1")
+
+    page_data = await asyncio.to_thread(vector_store.get_document_page, doc_id, page_num)
+    if not page_data or not page_data.get("filename"):
+        raise HTTPException(status_code=404, detail="Document or page not found")
+    return page_data
+
+@app.get("/api/documents/{doc_id}/file")
+async def get_document_file(doc_id: str):
+    """
+    Serves the document file inline so PDF browsers can jump directly to #page={page_num}.
+    """
+    if not doc_id.strip():
+        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
+
+    file_path = await asyncio.to_thread(vector_store.get_document_file_path, doc_id)
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Document file not found on server")
+
+    reg = vector_store._get_registry()
+    doc_info = reg.get(doc_id, {})
+    filename = doc_info.get("filename", file_path.name)
+    ext = filename.lower().split(".")[-1]
+
+    media_type_map = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "doc": "application/msword",
+        "txt": "text/plain; charset=utf-8",
+        "md": "text/markdown; charset=utf-8",
+    }
+    media_type = media_type_map.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=filename,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+    )
 
 @app.get("/api/documents/{doc_id}/suggested-questions")
 async def get_suggested_questions(doc_id: str):

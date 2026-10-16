@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, BookOpen, Copy, Check, AlertCircle, Loader2, Lock, Sparkles, ArrowUpRight, Trash2 } from 'lucide-react';
+import { Send, Bot, User, BookOpen, Copy, Check, AlertCircle, Loader2, Lock, Sparkles, ArrowUpRight, Trash2, ExternalLink } from 'lucide-react';
+import DocumentPageModal from './DocumentPageModal';
 
 export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
   const [messages, setMessages] = useState([]);
@@ -11,6 +12,8 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
   const [error, setError] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [selectedPageSource, setSelectedPageSource] = useState(null);
+  const [pageModalOpen, setPageModalOpen] = useState(false);
+  const [selectedModalPage, setSelectedModalPage] = useState(1);
   const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const chatContainerRef = useRef(null);
@@ -187,7 +190,8 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
 
   const handleBadgeClick = (pageNum) => {
     setSelectedPageSource(pageNum);
-    setTimeout(() => setSelectedPageSource(null), 3000);
+    setSelectedModalPage(pageNum);
+    setPageModalOpen(true);
   };
 
   const samplePrompts = [
@@ -368,11 +372,13 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
                     {msg.sources.map((pageNum, sIdx) => (
                       <button
                         key={sIdx}
+                        type="button"
                         onClick={() => handleBadgeClick(pageNum)}
-                        className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/20 text-brand-300 border border-brand-500/40 hover:bg-brand-500/35 hover:scale-105 active:scale-95 transition-all shadow-sm"
-                        title={`Click to view citation details for Page ${pageNum}`}
+                        className="group inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/20 text-brand-300 border border-brand-500/40 hover:bg-brand-500/35 hover:border-brand-400 hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        title={`Click to open Page ${pageNum} in ${documentInfo?.filename || 'document'}`}
                       >
-                        Page {pageNum}
+                        <span>Page {pageNum}</span>
+                        <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
                       </button>
                     ))}
                   </div>
@@ -478,6 +484,15 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
           <span>Shift+Enter for newline</span>
         </div>
       </div>
+
+      {/* In-App Document Page Viewer Modal */}
+      <DocumentPageModal
+        isOpen={pageModalOpen}
+        onClose={() => setPageModalOpen(false)}
+        docId={docId}
+        initialPage={selectedModalPage}
+        filename={documentInfo?.filename || 'Document'}
+      />
     </section>
   );
 }

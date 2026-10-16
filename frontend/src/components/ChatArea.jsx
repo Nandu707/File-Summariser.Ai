@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Sparkles, BookOpen, Copy, Check, AlertCircle, Loader2, ArrowUpRight, HelpCircle, Layers } from 'lucide-react';
+import { Send, Bot, User, Sparkles, BookOpen, Copy, Check, AlertCircle, Loader2, ArrowUpRight, HelpCircle, Layers, ExternalLink } from 'lucide-react';
 import { askQuestion } from '../api';
+import DocumentPageModal from './DocumentPageModal';
 
 export default function ChatArea({ activeDoc, onOpenUpload }) {
   const [messages, setMessages] = useState([]);
@@ -10,6 +11,8 @@ export default function ChatArea({ activeDoc, onOpenUpload }) {
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [dynamicQuestions, setDynamicQuestions] = useState([]);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [pageModalOpen, setPageModalOpen] = useState(false);
+  const [selectedModalPage, setSelectedModalPage] = useState(1);
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -259,13 +262,19 @@ export default function ChatArea({ activeDoc, onOpenUpload }) {
                       <span>Retrieved Sources:</span>
                     </span>
                     {msg.sources.map((pageNum, sIdx) => (
-                      <span
+                      <button
                         key={sIdx}
-                        className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/15 text-brand-300 border border-brand-500/30 hover:bg-brand-500/25 transition-colors"
-                        title={`Information sourced from Page ${pageNum}`}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModalPage(pageNum);
+                          setPageModalOpen(true);
+                        }}
+                        className="group inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/20 text-brand-300 border border-brand-500/40 hover:bg-brand-500/35 hover:border-brand-400 hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer"
+                        title={`Click to open Page ${pageNum} in ${activeDoc?.filename || 'document'}`}
                       >
-                        Page {pageNum}
-                      </span>
+                        <span>Page {pageNum}</span>
+                        <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      </button>
                     ))}
                   </div>
                 )}
@@ -369,6 +378,15 @@ export default function ChatArea({ activeDoc, onOpenUpload }) {
           <span>Shift+Enter for newline</span>
         </div>
       </div>
+
+      {/* In-App Document Page Viewer Modal */}
+      <DocumentPageModal
+        isOpen={pageModalOpen}
+        onClose={() => setPageModalOpen(false)}
+        docId={activeDoc?.doc_id}
+        initialPage={selectedModalPage}
+        filename={activeDoc?.filename || 'Document'}
+      />
     </section>
   );
 }

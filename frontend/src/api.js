@@ -79,3 +79,13 @@ export async function clearDocumentChat(docId) {
   return res.json();
 }
 
+export async function getDocumentPage(docId, pageNum) {
+  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/pages/${pageNum}`);
+  if (!res.ok) throw new Error(`Failed to load page ${pageNum}`);
+  return res.json();
+}
+
+export function getDocumentFileUrl(docId, pageNum = null) {
+  const base = `${API_BASE_URL}/api/documents/${docId}/file`;
+  return pageNum ? `${base}#page=${pageNum}` : base;
+}

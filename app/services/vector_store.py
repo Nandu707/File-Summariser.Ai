@@ -48,6 +48,8 @@ class VectorStoreService:
                 self.persist_dir = root_vdb.resolve()
 
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.files_dir = self.persist_dir / "files"
+        self.files_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize persistent local ChromaDB client
         self.client = chromadb.PersistentClient(path=str(self.persist_dir))
@@ -385,6 +387,19 @@ class VectorStoreService:
         }
         self._save_registry(reg)
 
+        # Cache raw file and page structures locally for instant page viewing
+        try:
+            content_bytes = content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8")
+            file_save_path = self.files_dir / f"{doc_id}_{filename}"
+            with open(file_save_path, "wb") as f:
+                f.write(content_bytes)
+
+            pages_save_path = self.files_dir / f"{doc_id}_pages.json"
+            with open(pages_save_path, "w", encoding="utf-8") as f:
+                json.dump(pages, f, ensure_ascii=False, indent=2)
+        except Exception as f_err:
+            print(f"[VectorStore] Notice caching raw file / pages: {f_err}")
+
         # Synchronize with Firebase Firestore & Storage if active
         if firebase_service and getattr(firebase_service, "is_active", False):
             try:
@@ -406,6 +421,7 @@ class VectorStoreService:
             "doc_id": doc_id,
             "filename": filename,
             "chunks": len(documents),
+            "pages_count": len(pages),
             "suggested_questions": suggested_questions
         }
 
@@ -450,6 +466,155 @@ class VectorStoreService:
             self._save_registry(reg)
 
         return questions
+
+    def get_all_pages_for_document(self, doc_id: str) -> List[Dict[str, Any]]:
+        """
+        Returns full text for every page of the document: [{'page': 1, 'text': '...'}, ...]
+        Uses local cache file if available, or reconstructs ordered page text from ChromaDB chunks.
+        """
+        pages_json = self.files_dir / f"{doc_id}_pages.json"
+        if pages_json.exists():
+            try:
+                with open(pages_json, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        return data
+            except Exception:
+                pass
+
+        matching = self.collection.get(where={"doc_id": doc_id})
+        if not matching or not matching.get("documents"):
+            try:
+                col_names = [c.name for c in self.client.list_collections()]
+                if "task_rag_documents" in col_names:
+                    legacy_col = self.client.get_collection("task_rag_documents")
+                    matching = legacy_col.get(where={"doc_id": doc_id})
+            except Exception:
+                pass
+
+        if not matching or not matching.get("documents"):
+            return []
+
+        page_chunks: Dict[int, List[Tuple[int, str]]] = {}
+        for doc, meta in zip(matching["documents"], matching["metadatas"]):
+            p_num = int(meta.get("page", 1))
+            c_idx = int(meta.get("chunk_index", 0))
+            clean_doc = re.sub(r"^\[Page\s+\d+\]\s*", "", doc).strip()
+            if p_num not in page_chunks:
+                page_chunks[p_num] = []
+            page_chunks[p_num].append((c_idx, clean_doc))
+
+        sorted_pages = []
+        for p_num in sorted(page_chunks.keys()):
+            chunks = sorted(page_chunks[p_num], key=lambda x: x[0])
+            full_page_text = "\n\n".join([c[1] for c in chunks])
+            sorted_pages.append({"page": p_num, "text": full_page_text})
+
+        try:
+            with open(self.files_dir / f"{doc_id}_pages.json", "w", encoding="utf-8") as f:
+                json.dump(sorted_pages, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+        return sorted_pages
+
+    def _reconstruct_document_file(self, doc_id: str, doc_info: Dict[str, Any]) -> Optional[Path]:
+        """
+        For pre-existing documents indexed without raw file on disk,
+        synthesizes a clean viewable document (PDF for .pdf, text for .txt/.docx).
+        """
+        filename = doc_info.get("filename", f"{doc_id}.pdf")
+        ext = filename.lower().split(".")[-1]
+        target_path = self.files_dir / f"{doc_id}_{filename}"
+        if target_path.exists():
+            return target_path
+
+        pages_data = self.get_all_pages_for_document(doc_id)
+        if not pages_data:
+            return None
+
+        try:
+            if ext == "pdf":
+                doc = fitz.open()
+                for p in pages_data:
+                    page = doc.new_page(width=595, height=842)
+                    # Header banner
+                    page.insert_text(
+                        fitz.Point(40, 36),
+                        f"{filename}  •  Page {p['page']} of {len(pages_data)}",
+                        fontsize=9,
+                        fontname="helv",
+                        color=(0.3, 0.3, 0.4)
+                    )
+                    page.draw_line(fitz.Point(40, 42), fitz.Point(555, 42), color=(0.75, 0.75, 0.8), width=0.7)
+
+                    # Text body
+                    rect = fitz.Rect(40, 56, 555, 800)
+                    page.insert_textbox(rect, p["text"], fontsize=10, fontname="helv", color=(0.1, 0.1, 0.15))
+                doc.save(str(target_path))
+                doc.close()
+                return target_path
+            else:
+                full_text = f"Document: {filename}\nTotal Pages: {len(pages_data)}\n\n" + "\n\n".join(
+                    [f"=== [ Page {p['page']} ] ===\n\n{p['text']}" for p in pages_data]
+                )
+                with open(target_path, "w", encoding="utf-8") as f:
+                    f.write(full_text)
+                return target_path
+        except Exception as e:
+            print(f"[VectorStore] Error reconstructing document file: {e}")
+            return None
+
+    def get_document_file_path(self, doc_id: str) -> Optional[Path]:
+        """
+        Returns the absolute Path of the stored file, or reconstructs it if needed.
+        """
+        reg = self._get_registry()
+        doc_info = reg.get(doc_id, {})
+        filename = doc_info.get("filename")
+
+        if filename:
+            p = self.files_dir / f"{doc_id}_{filename}"
+            if p.exists():
+                return p
+
+        for f in self.files_dir.glob(f"{doc_id}_*"):
+            if not f.name.endswith("_pages.json"):
+                return f
+
+        return self._reconstruct_document_file(doc_id, doc_info)
+
+    def get_document_page(self, doc_id: str, page_num: int) -> Dict[str, Any]:
+        """
+        Retrieves page details: total pages, page text content, file metadata, and view link.
+        """
+        reg = self._get_registry()
+        doc_info = reg.get(doc_id, {})
+        filename = doc_info.get("filename", "document")
+        ext = filename.lower().split(".")[-1]
+
+        all_pages = self.get_all_pages_for_document(doc_id)
+        total_pages = doc_info.get("pages_count") or (len(all_pages) if all_pages else 1)
+
+        target_page = next((p for p in all_pages if p["page"] == page_num), None)
+        content = target_page["text"] if target_page else ""
+
+        file_path = self.get_document_file_path(doc_id)
+        has_raw = file_path is not None and file_path.exists()
+
+        pdf_url = f"http://localhost:8000/api/documents/{doc_id}/file#page={page_num}"
+        file_url = pdf_url if ext == "pdf" else f"http://localhost:8000/api/documents/{doc_id}/file"
+
+        return {
+            "doc_id": doc_id,
+            "filename": filename,
+            "page": page_num,
+            "total_pages": total_pages,
+            "content": content,
+            "file_type": ext,
+            "has_raw_file": has_raw,
+            "file_url": file_url
+        }
 
     def _compute_keyword_score(self, query: str, text: str) -> float:
         """

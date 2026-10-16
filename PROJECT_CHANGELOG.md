@@ -17,6 +17,8 @@ timeline
     Milestone 6 : Word Document Support : python-docx Ingestion : Logical Page Segmentation : DOCX Badges
     Milestone 7 : Persistent Chat DB : SQLite Conversation Storage : File-Specific History : Clear Chat Feature
     Milestone 8 : GitHub Integration : Git Security Hardening (.gitignore) : Remote Push to GitHub
+    Milestone 9 : Firebase Cloud Sync : Cloud Firestore Chat Storage : Cloud Storage Bucket Ingestion
+    Milestone 10 : Interactive Source Citations : Page Click Deep-Linking : In-App Document Page Viewer Modal
 ```
 
 ---
@@ -123,3 +125,27 @@ timeline
   - Initialized Git repository on branch `main`.
   - Rebased and pushed all clean source code, services, frontend components, and comprehensive documentation to the remote repository:
     **[https://github.com/Nandu707/File-Summariser.Ai](https://github.com/Nandu707/File-Summariser.Ai)**.
+
+---
+
+### Milestone 9: Firebase Cloud Database & Storage Synchronization
+- **Firebase Dual-Mode Integration**:
+  - Implemented `FirebaseService` supporting both Firebase Admin SDK and standard Firebase REST API for Firestore and Google Cloud Storage.
+  - Automatically synchronizes all uploaded document metadata, chunks count, and suggested questions to Firestore collection `documents`.
+  - Persists all conversation turns to Firestore subcollection `documents/{doc_id}/messages` with SQLite fallback.
+  - Configured project credentials via `FIREBASE_PROJECT_ID=file-summariser-ai` and `FIREBASE_API_KEY`.
+
+---
+
+### Milestone 10: Interactive Source Citations & Document Page Viewer Modal
+- **Clickable Source Page Badges**:
+  - Transformed static source citations (`Page 1`, `Page 2`, `Page 3`) in assistant chat responses into interactive buttons with external-link badges.
+  - Clicking any cited page immediately launches the rich in-app [`DocumentPageModal`](file:///e:/Task-RAG/frontend/src/components/DocumentPageModal.jsx).
+- **Backend Deep-Linking Endpoints**:
+  - Added `GET /api/documents/{doc_id}/pages/{page_num}` returning precise page text, total page count, document filename, and file viewing URLs.
+  - Added `GET /api/documents/{doc_id}/file` streaming raw documents inline with `Content-Disposition: inline` so browser PDF viewers automatically jump directly to `#page={page_num}`.
+- **In-App Document Page Viewer Modal**:
+  - Features dual-mode rendering: native browser PDF Viewer (`<iframe>` deep-linked to the cited page) and full indexed text view with word count and one-click copy.
+  - Embedded pagination bar (`<` Previous, `>` Next, and keyboard arrow keys) for seamless document browsing.
+  - Works consistently across all file formats (PDF, DOCX, TXT) with automatic fallback and file reconstruction.
+
