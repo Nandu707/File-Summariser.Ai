@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 *.env
+*serviceAccount*.json
+firebase_service_account*.json
+firebase-adminsdk*.json
+
 
 # Python
 __pycache__/

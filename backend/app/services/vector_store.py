@@ -298,7 +298,7 @@ class VectorStoreService:
 
         return pages_data
 
-    def index_document(self, filename: str, content: Union[bytes, str], llm_service=None) -> Dict[str, Any]:
+    def index_document(self, filename: str, content: Union[bytes, str], llm_service=None, firebase_service=None) -> Dict[str, Any]:
         """
         Extracts text, splits using RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200),
         generates embeddings and stores in persistent ChromaDB client with doc_id and page metadata.
@@ -372,7 +372,7 @@ class VectorStoreService:
             except Exception as e:
                 print(f"[VectorStore] Notice generating suggested questions: {e}")
 
-        # Update registry
+        # Update local registry
         from datetime import datetime
         reg = self._get_registry()
         reg[doc_id] = {
@@ -384,6 +384,23 @@ class VectorStoreService:
             "suggested_questions": suggested_questions
         }
         self._save_registry(reg)
+
+        # Synchronize with Firebase Firestore & Storage if active
+        if firebase_service and getattr(firebase_service, "is_active", False):
+            try:
+                storage_url = None
+                content_bytes = content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8")
+                storage_url = firebase_service.upload_file(doc_id, filename, content_bytes)
+                firebase_service.save_document(
+                    doc_id=doc_id,
+                    filename=filename,
+                    chunks=len(documents),
+                    pages_count=len(pages),
+                    suggested_questions=suggested_questions,
+                    storage_url=storage_url
+                )
+            except Exception as fe:
+                print(f"[VectorStore] Notice syncing document to Firebase: {fe}")
 
         return {
             "doc_id": doc_id,

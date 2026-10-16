@@ -19,6 +19,7 @@ sys.path.insert(0, str(BASE_DIR))
 from app.services.vector_store import VectorStoreService
 from app.services.llm_service import LLMService
 from app.services.chat_history_service import ChatHistoryService
+from app.services.firebase_service import FirebaseService
 
 load_dotenv()
 
@@ -50,6 +51,7 @@ app.add_middleware(
 vector_store = VectorStoreService()
 llm_service = LLMService()
 chat_history = ChatHistoryService()
+firebase_service = FirebaseService()
 
 # Startup logging for debugging
 print(f"[startup] Vector DB path: {vector_store.persist_dir}")
@@ -91,21 +93,27 @@ def health():
         "vector_db_path": str(vector_store.persist_dir),
         "cors_allowed": origins,
         "llm_gemini_active": bool(os.getenv("GEMINI_API_KEY")),
-        "llm_openai_active": bool(os.getenv("OPENAI_API_KEY"))
+        "llm_openai_active": bool(os.getenv("OPENAI_API_KEY")),
+        "firebase_active": getattr(firebase_service, "is_active", False)
     }
 
 @app.get("/api/documents")
 def get_documents():
-    """Returns list of indexed documents in persistent ChromaDB storage."""
+    """Returns list of indexed documents in persistent ChromaDB storage and Firebase."""
     return vector_store.list_documents()
 
 @app.delete("/api/documents/{doc_id}")
 def delete_document(doc_id: str):
-    """Deletes an indexed document from ChromaDB, registry, and clears its chat history."""
+    """Deletes an indexed document from ChromaDB, registry, Firebase, and clears its chat history."""
     success = vector_store.delete_document(doc_id)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found or could not be deleted")
     chat_history.clear_messages(doc_id)
+    if getattr(firebase_service, "is_active", False):
+        try:
+            firebase_service.delete_document(doc_id)
+        except Exception as fe:
+            print(f"[main] Notice deleting from Firebase: {fe}")
     return {"message": "Document deleted successfully", "doc_id": doc_id}
 
 @app.get("/api/documents/{doc_id}/suggested-questions")
@@ -124,23 +132,44 @@ async def get_suggested_questions(doc_id: str):
 @app.get("/api/documents/{doc_id}/chat")
 async def get_document_chat(doc_id: str):
     """
-    Returns the persistent chat history for the specified document from SQLite.
+    Returns the persistent chat history for the specified document from Firebase Firestore (or SQLite fallback).
     """
     if not doc_id.strip():
         raise HTTPException(status_code=400, detail="doc_id cannot be empty")
+
+    if getattr(firebase_service, "is_active", False):
+        try:
+            fb_messages = await asyncio.to_thread(firebase_service.get_chat_messages, doc_id)
+            if fb_messages and len(fb_messages) > 0:
+                return {
+                    "doc_id": doc_id,
+                    "messages": fb_messages,
+                    "source": "firebase"
+                }
+        except Exception as fe:
+            print(f"[main] Notice reading chat from Firebase: {fe}")
+
     messages = await asyncio.to_thread(chat_history.get_messages, doc_id)
     return {
         "doc_id": doc_id,
-        "messages": messages
+        "messages": messages,
+        "source": "sqlite"
     }
 
 @app.delete("/api/documents/{doc_id}/chat")
 async def clear_document_chat(doc_id: str):
     """
-    Clears the chat history for the specified document from SQLite.
+    Clears the chat history for the specified document from Firebase Firestore and SQLite.
     """
     if not doc_id.strip():
         raise HTTPException(status_code=400, detail="doc_id cannot be empty")
+
+    if getattr(firebase_service, "is_active", False):
+        try:
+            await asyncio.to_thread(firebase_service.clear_chat_messages, doc_id)
+        except Exception as fe:
+            print(f"[main] Notice clearing chat from Firebase: {fe}")
+
     await asyncio.to_thread(chat_history.clear_messages, doc_id)
     return {
         "doc_id": doc_id,
@@ -178,7 +207,7 @@ async def upload_document(file: UploadFile = File(...)):
 
         # Uses PyMuPDF / python-docx + RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200) + ChromaDB
         # Non-blocking async thread execution for fast responsiveness on large files
-        result = await asyncio.to_thread(vector_store.index_document, file.filename, content, llm_service)
+        result = await asyncio.to_thread(vector_store.index_document, file.filename, content, llm_service, firebase_service)
         return result
 
     except HTTPException:
@@ -195,10 +224,10 @@ async def upload_document(file: UploadFile = File(...)):
 async def ask_question(request: AskRequest):
     """
     Accepts { "doc_id": str, "question": str },
-    persists user question to SQLite DB,
+    persists user question to SQLite DB & Firebase Firestore,
     retrieves the top 4 chunks from ChromaDB via Hybrid RRF Search,
     passes them to the LLM with a strict context-only prompt,
-    persists assistant response to SQLite DB,
+    persists assistant response to SQLite DB & Firebase Firestore,
     and returns: { "answer": str, "sources": list[int] }
     """
     if not request.doc_id.strip():
@@ -214,13 +243,23 @@ async def ask_question(request: AskRequest):
         )
 
     try:
-        # Store user question in persistent SQLite database
+        # Store user question in persistent SQLite database & Firebase
         await asyncio.to_thread(
             chat_history.add_message,
             doc_id=request.doc_id,
             role="user",
             content=request.question
         )
+        if getattr(firebase_service, "is_active", False):
+            try:
+                await asyncio.to_thread(
+                    firebase_service.save_chat_message,
+                    doc_id=request.doc_id,
+                    role="user",
+                    content=request.question
+                )
+            except Exception as fe:
+                print(f"[main] Notice saving user message to Firebase: {fe}")
 
         # Retrieve top 4 chunks from ChromaDB asynchronously
         chunks, metadatas, sources = await asyncio.to_thread(
@@ -245,6 +284,17 @@ async def ask_question(request: AskRequest):
                 content=fallback_ans,
                 sources=[]
             )
+            if getattr(firebase_service, "is_active", False):
+                try:
+                    await asyncio.to_thread(
+                        firebase_service.save_chat_message,
+                        doc_id=request.doc_id,
+                        role="assistant",
+                        content=fallback_ans,
+                        sources=[]
+                    )
+                except Exception as fe:
+                    print(f"[main] Notice saving fallback to Firebase: {fe}")
             return {
                 "answer": fallback_ans,
                 "sources": []
@@ -264,7 +314,7 @@ async def ask_question(request: AskRequest):
         valid_cited = [p for p in cited_pages if p in sources] if sources else cited_pages
         final_sources = sorted(list(set(valid_cited if valid_cited else sources)))
 
-        # Store assistant response and cited sources in persistent SQLite database
+        # Store assistant response and cited sources in persistent SQLite database & Firebase
         await asyncio.to_thread(
             chat_history.add_message,
             doc_id=request.doc_id,
@@ -272,6 +322,17 @@ async def ask_question(request: AskRequest):
             content=answer,
             sources=final_sources
         )
+        if getattr(firebase_service, "is_active", False):
+            try:
+                await asyncio.to_thread(
+                    firebase_service.save_chat_message,
+                    doc_id=request.doc_id,
+                    role="assistant",
+                    content=answer,
+                    sources=final_sources
+                )
+            except Exception as fe:
+                print(f"[main] Notice saving assistant answer to Firebase: {fe}")
 
         # Return answer along with source page numbers
         return {
@@ -289,6 +350,17 @@ async def ask_question(request: AskRequest):
             content=f"Error querying document: {str(e)}",
             is_error=True
         )
+        if getattr(firebase_service, "is_active", False):
+            try:
+                await asyncio.to_thread(
+                    firebase_service.save_chat_message,
+                    doc_id=request.doc_id,
+                    role="assistant",
+                    content=f"Error querying document: {str(e)}",
+                    is_error=True
+                )
+            except Exception:
+                pass
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to query document: {str(e)}"
