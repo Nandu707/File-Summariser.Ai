@@ -548,21 +548,26 @@ class VectorStoreService:
         try:
             if ext == "pdf":
                 doc = fitz.open()
-                for p in pages_data:
+                max_page = max((p["page"] for p in pages_data), default=len(pages_data))
+                pages_by_num = {p["page"]: p for p in pages_data}
+
+                for p_num in range(1, max_page + 1):
                     page = doc.new_page(width=595, height=842)
-                    # Header banner
+                    header_text = f"{filename}  •  Page {p_num} of {max_page}"
                     page.insert_text(
                         fitz.Point(40, 36),
-                        f"{filename}  •  Page {p['page']} of {len(pages_data)}",
+                        header_text,
                         fontsize=9,
                         fontname="helv",
                         color=(0.3, 0.3, 0.4)
                     )
                     page.draw_line(fitz.Point(40, 42), fitz.Point(555, 42), color=(0.75, 0.75, 0.8), width=0.7)
 
-                    # Text body
-                    rect = fitz.Rect(40, 56, 555, 800)
-                    page.insert_textbox(rect, p["text"], fontsize=10, fontname="helv", color=(0.1, 0.1, 0.15))
+                    p = pages_by_num.get(p_num)
+                    if p and p.get("text"):
+                        rect = fitz.Rect(40, 56, 555, 800)
+                        page.insert_textbox(rect, p["text"], fontsize=10, fontname="helv", color=(0.1, 0.1, 0.15))
+
                 doc.save(str(target_path))
                 doc.close()
                 return target_path

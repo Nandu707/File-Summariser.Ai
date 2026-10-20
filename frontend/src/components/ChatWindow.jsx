@@ -221,22 +221,32 @@ export default function ChatWindow({
 
   const handleOpenSourcePdf = (docId, pageNum, filename) => {
     let targetDocId = docId;
+    let targetFilename = filename;
+
     if (!targetDocId || targetDocId === 'all') {
       if (activeDocId && activeDocId !== 'all') {
         targetDocId = activeDocId;
+        const currentDoc = documents.find((d) => d.doc_id === targetDocId);
+        if (currentDoc) targetFilename = currentDoc.filename;
       } else if (filename && Array.isArray(documents) && documents.length > 0) {
         const found = documents.find((d) => d.filename === filename);
-        if (found) targetDocId = found.doc_id;
+        if (found) {
+          targetDocId = found.doc_id;
+          targetFilename = found.filename;
+        }
       }
-      if (!targetDocId && Array.isArray(documents) && documents.length > 0) {
-        targetDocId = documents[0].doc_id;
-      }
+    }
+
+    if (!targetDocId && Array.isArray(documents) && documents.length > 0) {
+      targetDocId = documents[0].doc_id;
+      targetFilename = documents[0].filename;
     }
 
     if (!targetDocId) return;
 
     const page = pageNum || 1;
-    const pdfUrl = `http://localhost:8000/api/documents/${targetDocId}/file#page=${page}`;
+    const cleanFn = targetFilename ? encodeURIComponent(targetFilename) : 'document.pdf';
+    const pdfUrl = `http://localhost:8000/api/documents/${targetDocId}/file/${cleanFn}#page=${page}`;
     window.open(pdfUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -434,9 +444,19 @@ export default function ChatWindow({
                         ))
                       ) : (
                         msg.sources.map((pageNum, sIdx) => {
-                          const targetDocId = activeDocId !== 'all' ? activeDocId : (documents[0]?.doc_id || null);
-                          const matchingDoc = documents.find((d) => d.doc_id === targetDocId);
-                          const fn = matchingDoc?.filename || '';
+                          let targetDocId = activeDocId !== 'all' ? activeDocId : null;
+                          let fn = '';
+                          if (!targetDocId && Array.isArray(msg.source_documents) && msg.source_documents.length > 0) {
+                            const found = documents.find((d) => d.filename === msg.source_documents[0]);
+                            if (found) {
+                              targetDocId = found.doc_id;
+                              fn = found.filename;
+                            }
+                          }
+                          if (!targetDocId && documents.length > 0) {
+                            targetDocId = documents[0].doc_id;
+                            fn = documents[0].filename;
+                          }
                           return (
                             <button
                               key={sIdx}

@@ -40,8 +40,13 @@ async def get_document_page(doc_id: str, page_num: int):
         raise HTTPException(status_code=404, detail="Document or page not found")
     return page_data
 
+from typing import Optional
+
 @router.get("/{doc_id}/file")
-async def get_document_file(doc_id: str):
+@router.get("/{doc_id}/file/{filename}")
+@router.get("/{doc_id}/view")
+@router.get("/{doc_id}/view/{filename}")
+async def get_document_file(doc_id: str, filename: Optional[str] = None):
     """
     Serves the document file inline so PDF browsers can jump directly to #page={page_num}.
     """

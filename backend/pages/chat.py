@@ -1,4 +1,5 @@
 import asyncio
+import re
 from fastapi import APIRouter, HTTPException, status
 from .deps import vector_store, llm_service, chat_history, firebase_service
 from .schemas import AskRequest, AskResponse, SequentialQuestionsRequest
@@ -129,6 +130,65 @@ async def ask_question(request: AskRequest):
             chunks=chunks
         )
         answer, sequential_questions = await asyncio.gather(answer_task, seq_task)
+
+        # Ground citations: only cite chunks/documents that genuinely contributed to the answer
+        grounded_source_details = []
+        grounded_source_pages = []
+        grounded_source_files = set()
+        seen_grounded = set()
+
+        answer_lower = answer.lower()
+        answer_words = set(re.findall(r"\b[a-z]{4,}\b", answer_lower))
+
+        chunk_scores = []
+        for idx, (chunk, m) in enumerate(zip(chunks, metadatas)):
+            chunk_lower = chunk.lower()
+            chunk_words = set(re.findall(r"\b[a-z]{4,}\b", chunk_lower))
+            overlap = answer_words.intersection(chunk_words)
+
+            phrase_matches = 0
+            for s in re.split(r"[.\n•*-]", answer):
+                s_words = re.sub(r"[^\w\s]", "", s.lower()).split()
+                if len(s_words) >= 3:
+                    for w_i in range(len(s_words) - 2):
+                        trigram = " ".join(s_words[w_i:w_i + 3])
+                        if trigram in chunk_lower:
+                            phrase_matches += 1
+
+            relevance_score = len(overlap) + (phrase_matches * 5)
+            chunk_scores.append((relevance_score, idx, chunk, m))
+
+        chunk_scores.sort(key=lambda x: x[0], reverse=True)
+        max_relevance = chunk_scores[0][0] if chunk_scores else 0
+
+        # Retain chunks with verified relevance to the generated answer
+        threshold = max(6, max_relevance * 0.3) if max_relevance > 0 else 0
+        retained_metas = [
+            m for score, idx, chunk, m in chunk_scores
+            if score >= threshold or (max_relevance == 0 and idx == 0)
+        ]
+
+        if not retained_metas and metadatas:
+            retained_metas = [metadatas[0]]
+
+        for m in retained_metas:
+            p = int(m.get("page", 1))
+            fn = m.get("filename") or doc_filename
+            d_id = m.get("doc_id") or effective_doc_id
+            dedup_key = (fn, d_id, p)
+            if dedup_key not in seen_grounded:
+                seen_grounded.add(dedup_key)
+                grounded_source_pages.append(p)
+                grounded_source_files.add(fn)
+                grounded_source_details.append({
+                    "filename": fn,
+                    "doc_id": d_id,
+                    "page": p
+                })
+
+        sorted_sources = sorted(list(set(grounded_source_pages)))
+        source_details = grounded_source_details
+        source_files = list(grounded_source_files)
 
         # Store assistant response in persistent SQLite database & background Firebase
         await asyncio.to_thread(
