@@ -25,13 +25,16 @@ class LLMService:
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
 
     def format_context(self, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
-        """Formats top 4 chunks with page metadata into structured context."""
+        """Formats top 4 chunks with filename and page metadata into structured context."""
         context_parts = []
         for idx, chunk in enumerate(chunks):
             page_num = "Unknown"
+            file_name = ""
             if metadatas and idx < len(metadatas) and isinstance(metadatas[idx], dict):
                 page_num = metadatas[idx].get("page", "Unknown")
-            context_parts.append(f"[Excerpt {idx + 1} | Page {page_num}]:\n{chunk.strip()}")
+                file_name = metadatas[idx].get("filename", "")
+            file_label = f"Document: {file_name} | " if file_name else ""
+            context_parts.append(f"[Excerpt {idx + 1} | {file_label}Page {page_num}]:\n{chunk.strip()}")
         return "\n\n".join(context_parts)
 
     def generate_answer(self, question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
@@ -53,13 +56,14 @@ class LLMService:
             f"Strict Context-Only Answer:"
         )
 
+        ans = None
         # 1. Google Gemini API (if key configured)
         if self.gemini_api_key:
             try:
                 from google import genai
                 from google.genai import types
                 client = genai.Client(api_key=self.gemini_api_key)
-                for model_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-flash-latest"]:
+                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
                     try:
                         response = client.models.generate_content(
                             model=model_name,
@@ -69,7 +73,8 @@ class LLMService:
                             )
                         )
                         if response and response.text:
-                            return response.text.strip()
+                            ans = response.text.strip()
+                            break
                     except Exception as model_err:
                         print(f"[LLMService] Model {model_name} error: {model_err}")
                         continue
@@ -77,7 +82,7 @@ class LLMService:
                 print(f"[LLMService] Gemini generation error, falling back: {e}")
 
         # 2. OpenAI API (if key configured)
-        if self.openai_api_key:
+        if not ans and self.openai_api_key:
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=self.openai_api_key)
@@ -91,12 +96,32 @@ class LLMService:
                 )
                 content = res.choices[0].message.content
                 if content:
-                    return content.strip()
+                    ans = content.strip()
             except Exception as e:
                 print(f"[LLMService] OpenAI generation error, falling back: {e}")
 
         # 3. Built-in Strict Context-Only Grounded Fallback (Runs 100% offline with zero external API key requirements)
-        return self._strict_context_grounded_answer(question, chunks, metadatas)
+        if not ans:
+            ans = self._strict_context_grounded_answer(question, chunks, metadatas)
+
+        return self._clean_page_numbers_from_answer(ans)
+
+    def _clean_page_numbers_from_answer(self, text: str) -> str:
+        """Removes any page citations or page number references from the text."""
+        if not text:
+            return text
+        # Remove parenthetical page references, e.g., (Page 1), (Pages 1-3), (p. 2), [Page 1], (Page 1, 2)
+        cleaned = re.sub(r"\s*[\(\[]\s*(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\s*[\)\]]", "", text, flags=re.IGNORECASE)
+        # Remove bolded or prefix page markers like "- **(Page 1)**:" or "- (Page 1):" or "- Page 1:"
+        cleaned = re.sub(r"^\s*[-*•]\s*(?:\*\*)?\(?(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\)?(?:\*\*)?:?\s*", "- ", cleaned, flags=re.MULTILINE | re.IGNORECASE)
+        # Remove standalone "Page X:" or "Page X -" at start of lines
+        cleaned = re.sub(r"^\s*(?:Page|Pages)\s*\d+(?:\s*[-–,]\s*\d+)*:?\s*", "", cleaned, flags=re.MULTILINE | re.IGNORECASE)
+        # Clean up any trailing / empty parentheses like " ()"
+        cleaned = re.sub(r"\(\s*\)", "", cleaned)
+        cleaned = re.sub(r"\[\s*\]", "", cleaned)
+        # Clean up repeated spaces
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        return cleaned.strip()
 
     def _strict_context_grounded_answer(self, question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
         """
@@ -155,14 +180,12 @@ class LLMService:
                 if len(fallback_sentences) >= 5:
                     break
             if fallback_sentences:
-                bullet_points = "\n".join([f"- **(Page {it['page']})**: \"{it['sentence']}\"" for it in fallback_sentences])
-                pages_str = ", ".join(f"Page {p}" for p in sorted(list(set(it['page'] for it in fallback_sentences))))
-                return f"Based on the most relevant excerpts from the document ({pages_str}):\n\n{bullet_points}\n\n*These are the closest matching sections retrieved from the document.*"
+                bullet_points = "\n".join([f"- \"{it['sentence']}\"" for it in fallback_sentences])
+                return f"Based on the most relevant excerpts from the document:\n\n{bullet_points}\n\n*These are the closest matching sections retrieved from the document.*"
             # Absolute last resort: show raw chunk content
             if chunks:
                 first_chunk = chunks[0].strip()[:500]
-                page_num = metadatas[0].get("page", 1) if metadatas and isinstance(metadatas[0], dict) else 1
-                return f"Based on the document content (Page {page_num}):\n\n> {first_chunk}\n\n*This is the most relevant section found in the document.*"
+                return f"Based on the document content:\n\n> {first_chunk}\n\n*This is the most relevant section found in the document.*"
 
         # Sort sentences by keyword score
         matched_sentences.sort(key=lambda s: (-s["score"], s["len"]))
@@ -180,11 +203,10 @@ class LLMService:
                 if len(selected) >= 3:
                     break
 
-        bullet_points = "\n".join([f"- (Page {it['page']}): \"{it['sentence']}\"" for it in selected])
-        pages_str = ", ".join(f"Page {p}" for p in sorted(list(pages_cited)))
+        bullet_points = "\n".join([f"- \"{it['sentence']}\"" for it in selected])
 
         return (
-            f"Based strictly on the provided context ({pages_str}):\n\n"
+            f"Based strictly on the provided context:\n\n"
             f"{bullet_points}"
         )
 
@@ -217,7 +239,7 @@ class LLMService:
                 from google import genai
                 from google.genai import types
                 client = genai.Client(api_key=self.gemini_api_key)
-                for model_name in ["gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]:
+                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
                     try:
                         res = client.models.generate_content(
                             model=model_name,
@@ -301,6 +323,154 @@ class LLMService:
 
         return questions[:4]
 
+    def generate_sequential_questions(
+        self,
+        filename: str,
+        question: str,
+        answer: str,
+        chunks: Optional[List[str]] = None
+    ) -> List[str]:
+        """
+        Generates 3 logical sequential / follow-up questions tailored to the document content,
+        the user's previous question, and the generated answer.
+        """
+        context_snippet = ""
+        if chunks:
+            context_snippet = "\n\n".join(chunks)[:2500]
+
+        prompt = (
+            f"You are an expert conversational AI document analyst.\n"
+            f"The user is reading the document \"{filename}\" and just had the following Q&A interaction:\n\n"
+            f"--- PREVIOUS QUESTION ---\n"
+            f"{question}\n\n"
+            f"--- PREVIOUS ANSWER ---\n"
+            f"{answer}\n"
+            f"--- END OF PREVIOUS INTERACTION ---\n\n"
+            f"--- DOCUMENT EXCERPTS ---\n"
+            f"{context_snippet}\n"
+            f"--- END DOCUMENT EXCERPTS ---\n\n"
+            f"Suggest 3 sequential follow-up questions that logically flow from this previous question and answer, "
+            f"deeply relevant to the topics, methodologies, entities, and facts present in \"{filename}\".\n\n"
+            f"CRITICAL RULES:\n"
+            f"1. Progression: The questions must be natural next steps (e.g. drilling deeper into specific items mentioned in the answer, exploring related components described in the document, or asking about outcomes/implementation details).\n"
+            f"2. Relevance: Directly connect the previous topic with other relevant information from the document excerpts.\n"
+            f"3. Specificity: Be specific. Mention entities, technologies, sections, or metrics from the document. Do NOT ask generic questions like 'Can you elaborate?'.\n"
+            f"4. Format: Return ONLY a valid JSON array of exactly 3 concise question strings, with no markdown code fences, comments, or extra text.\n"
+            f"Example format:\n"
+            f"[\"How were Lambda functions connected to S3?\", \"What IAM security policies were configured?\", \"What deployment pipelines were used for this setup?\"]"
+        )
+
+        # 1. Google Gemini API
+        if self.gemini_api_key:
+            try:
+                from google import genai
+                from google.genai import types
+                client = genai.Client(api_key=self.gemini_api_key)
+                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
+                    try:
+                        res = client.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                temperature=0.3,
+                                response_mime_type="application/json"
+                            )
+                        )
+                        if res and res.text:
+                            raw = res.text.strip()
+                            if raw.startswith("```"):
+                                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                                raw = re.sub(r"\s*```$", "", raw)
+                            parsed = json.loads(raw)
+                            if isinstance(parsed, list) and len(parsed) >= 2:
+                                return [str(q).strip() for q in parsed if str(q).strip()][:3]
+                            elif isinstance(parsed, dict):
+                                for val in parsed.values():
+                                    if isinstance(val, list) and len(val) >= 2:
+                                        return [str(q).strip() for q in val if str(q).strip()][:3]
+                    except Exception as model_err:
+                        continue
+            except Exception as e:
+                print(f"[LLMService] Gemini sequential questions notice: {e}")
+
+        # 2. OpenAI API
+        if self.openai_api_key:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=self.openai_api_key)
+                res = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You output only a JSON array of exactly 3 sequential follow-up questions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    response_format={"type": "json_object"}
+                )
+                raw = res.choices[0].message.content
+                if raw:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        for val in parsed.values():
+                            if isinstance(val, list) and len(val) >= 2:
+                                return [str(q).strip() for q in val if str(q).strip()][:3]
+                    elif isinstance(parsed, list) and len(parsed) >= 2:
+                        return [str(q).strip() for q in parsed if str(q).strip()][:3]
+            except Exception as e:
+                print(f"[LLMService] OpenAI sequential questions notice: {e}")
+
+        # 3. Dynamic Heuristic Sequential Questions Fallback
+        return self._generate_heuristic_sequential_questions(filename, question, answer, chunks)
+
+    def _generate_heuristic_sequential_questions(
+        self,
+        filename: str,
+        question: str,
+        answer: str,
+        chunks: Optional[List[str]] = None
+    ) -> List[str]:
+        """
+        Offline fallback that generates 3 intelligent sequential questions by extracting
+        key entities and topics from the previous Q&A exchange and the document.
+        """
+        combined_text = f"{question} {answer}"
+        # Extract meaningful terms (capitalized words, technical terms, keywords)
+        words = re.findall(r"\b[A-Z][a-zA-Z0-9_\-\.]{2,}\b|\b[a-zA-Z0-9_\-\.]{4,}\b", combined_text)
+        stopwords = {
+            "what", "when", "where", "which", "with", "from", "that", "this", "these",
+            "those", "have", "been", "were", "about", "could", "would", "should",
+            "there", "their", "under", "after", "before", "page", "pages", "document",
+            "based", "provided", "context", "excerpts", "answer", "question"
+        }
+        candidates = [w for w in words if w.lower() not in stopwords]
+
+        # Deduplicate while preserving order
+        unique_entities = []
+        for c in candidates:
+            if c.lower() not in [u.lower() for u in unique_entities]:
+                unique_entities.append(c)
+
+        base_name = re.sub(r"\.[a-zA-Z0-9]+$", "", filename)
+        questions = []
+
+        if len(unique_entities) >= 2:
+            e1 = unique_entities[0]
+            e2 = unique_entities[1]
+            questions.append(f"How is {e1} specifically implemented or utilized in {base_name}?")
+            questions.append(f"What is the relationship or workflow between {e1} and {e2}?")
+            questions.append(f"What are the main results, metrics, or challenges related to {e1}?")
+        elif len(unique_entities) == 1:
+            e1 = unique_entities[0]
+            questions.append(f"Can you provide more specific details about {e1} mentioned in {base_name}?")
+            questions.append(f"What advantages, configurations, or parameters are outlined for {e1}?")
+            questions.append(f"What are the subsequent steps or conclusions involving {e1}?")
+        else:
+            questions.append(f"What are the key technical details and methodology described in {base_name}?")
+            questions.append(f"What specific conclusions or outcomes are highlighted in the document?")
+            questions.append(f"What next steps or recommendations are proposed in {base_name}?")
+
+        return questions[:3]
+
 
 # Default singleton instance
 _default_llm_service = None
@@ -313,3 +483,7 @@ def get_llm_service() -> LLMService:
 
 def generate_answer(question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
     return get_llm_service().generate_answer(question, chunks, metadatas)
+
+def generate_sequential_questions(filename: str, question: str, answer: str, chunks: Optional[List[str]] = None) -> List[str]:
+    return get_llm_service().generate_sequential_questions(filename, question, answer, chunks)
+

@@ -1,26 +1,49 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, BookOpen, Copy, Check, AlertCircle, Loader2, Lock, Sparkles, ArrowUpRight, Trash2, ExternalLink } from 'lucide-react';
-import DocumentPageModal from './DocumentPageModal';
+import {
+  Send,
+  Bot,
+  User,
+  Copy,
+  Check,
+  Loader2,
+  Sparkles,
+  ArrowUpRight,
+  Trash2,
+  FileText,
+  Layers,
+  BookOpen,
+  ArrowRight,
+  ChevronDown
+} from 'lucide-react';
 
-export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
+export default function ChatWindow({
+  activeDocId = 'all',
+  documents = [],
+  onSelectDoc,
+  onNavigateTab,
+  onViewPage,
+  onLoadingChange
+}) {
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingChat, setLoadingChat] = useState(false);
   const [error, setError] = useState(null);
   const [copiedIdx, setCopiedIdx] = useState(null);
-  const [selectedPageSource, setSelectedPageSource] = useState(null);
-  const [pageModalOpen, setPageModalOpen] = useState(false);
-  const [selectedModalPage, setSelectedModalPage] = useState(1);
   const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  const isChatDisabled = !docId;
+  const docCount = documents.length;
+  const isAllDocs = !activeDocId || activeDocId === 'all';
+  const activeDocument = isAllDocs ? null : documents.find((d) => d.doc_id === activeDocId);
+  const activeDocTitle = isAllDocs
+    ? `All Uploaded Documents (${docCount} ${docCount === 1 ? 'file' : 'files'})`
+    : activeDocument?.filename || 'Selected Document';
 
   const scrollToBottom = () => {
     if (chatContainerRef.current) {
@@ -35,32 +58,25 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
     scrollToBottom();
   }, [messages, loading]);
 
-  // When docId changes, load persistent chat history from DB and document-tailored suggested questions
+  // Load persistent chat history and suggested questions when activeDocId changes
   useEffect(() => {
     setError(null);
-    if (docId) {
-      inputRef.current?.focus();
-    }
-
-    if (!docId) {
-      setMessages([]);
-      setSuggestedQuestions([]);
-      return;
-    }
+    inputRef.current?.focus();
 
     let isMounted = true;
+    const effectiveId = activeDocId || 'all';
 
-    // Load persisted chat history for this document from SQLite DB
+    // Fetch persistent chat history
     const fetchChatHistory = async () => {
       setLoadingChat(true);
       try {
-        const res = await axios.get(`http://localhost:8000/api/documents/${docId}/chat`);
+        const res = await axios.get(`http://localhost:8000/api/documents/${effectiveId}/chat`);
         if (isMounted && res.data && Array.isArray(res.data.messages)) {
           setMessages(res.data.messages);
         }
       } catch (err) {
         if (isMounted) {
-          console.error("Failed to fetch chat history:", err);
+          console.error('Failed to fetch chat history:', err);
           setMessages([]);
         }
       } finally {
@@ -72,54 +88,63 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
 
     fetchChatHistory();
 
-    // If documentInfo already has suggested questions, use them directly
-    if (Array.isArray(documentInfo?.suggested_questions) && documentInfo.suggested_questions.length > 0) {
-      setSuggestedQuestions(documentInfo.suggested_questions);
-    } else {
-      // Fetch dynamic questions tailored to the active file
-      const fetchQuestions = async () => {
-        setLoadingSuggestions(true);
-        try {
-          const res = await axios.get(`http://localhost:8000/api/documents/${docId}/suggested-questions`);
-          if (isMounted && res.data && Array.isArray(res.data.suggested_questions) && res.data.suggested_questions.length > 0) {
-            setSuggestedQuestions(res.data.suggested_questions);
-          }
-        } catch (err) {
-          if (isMounted) {
-            const fn = documentInfo?.filename || 'this document';
+    // Fetch dynamic questions tailored to the active selection (all or specific file)
+    const fetchQuestions = async () => {
+      if (docCount === 0) {
+        setSuggestedQuestions([]);
+        return;
+      }
+      setLoadingSuggestions(true);
+      try {
+        const res = await axios.get(`http://localhost:8000/api/documents/${effectiveId}/suggested-questions`);
+        if (isMounted && res.data && Array.isArray(res.data.suggested_questions) && res.data.suggested_questions.length > 0) {
+          setSuggestedQuestions(res.data.suggested_questions);
+        }
+      } catch (err) {
+        if (isMounted) {
+          if (isAllDocs) {
+            setSuggestedQuestions([
+              'Summarize the key topics covered across all uploaded files.',
+              'What are the primary conclusions and metrics found in the documents?',
+              'Compare and synthesize the main findings from the uploaded documents.'
+            ]);
+          } else {
+            const fn = activeDocument?.filename || 'this document';
             setSuggestedQuestions([
               `What is the central topic and summary of ${fn}?`,
-              `What key technical skills, metrics, or methods are outlined?`,
-              `What conclusions and next steps are stated in ${fn}?`
+              `What key numbers, statistics, or metrics are mentioned in ${fn}?`,
+              `What are the primary conclusions and next steps in ${fn}?`
             ]);
           }
-        } finally {
-          if (isMounted) {
-            setLoadingSuggestions(false);
-          }
         }
-      };
-      fetchQuestions();
-    }
+      } finally {
+        if (isMounted) {
+          setLoadingSuggestions(false);
+        }
+      }
+    };
+
+    fetchQuestions();
 
     return () => {
       isMounted = false;
     };
-  }, [docId, documentInfo]);
+  }, [activeDocId]);
 
   const handleClearChat = async () => {
-    if (!docId || loading) return;
+    if (loading) return;
+    const effectiveId = activeDocId || 'all';
     try {
-      await axios.delete(`http://localhost:8000/api/documents/${docId}/chat`);
+      await axios.delete(`http://localhost:8000/api/documents/${effectiveId}/chat`);
       setMessages([]);
     } catch (err) {
-      console.error("Failed to clear chat history:", err);
+      console.error('Failed to clear chat history:', err);
     }
   };
 
   const handleSend = async (customPrompt) => {
     const qToSend = (customPrompt || question).trim();
-    if (!qToSend || isChatDisabled || loading) return;
+    if (!qToSend || loading) return;
 
     setError(null);
     setQuestion('');
@@ -135,23 +160,27 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
     onLoadingChange?.(true);
 
     try {
-      // POST to http://localhost:8000/api/ask using axios
-      const response = await axios.post('http://localhost:8000/api/ask', {
-        doc_id: docId,
-        question: qToSend,
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await axios.post(
+        'http://localhost:8000/api/ask',
+        {
+          doc_id: activeDocId || 'all',
+          question: qToSend,
         },
-        timeout: 60000,
-      });
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 90000,
+        }
+      );
 
-      const data = response.data; // { answer, sources }
+      const data = response.data; // { answer, sources, source_documents, source_details, suggested_questions }
 
       const botMessage = {
         role: 'assistant',
         content: data.answer || '',
         sources: Array.isArray(data.sources) ? data.sources : [],
+        source_documents: Array.isArray(data.source_documents) ? data.source_documents : [],
+        source_details: Array.isArray(data.source_details) ? data.source_details : [],
+        suggested_questions: Array.isArray(data.suggested_questions) ? data.suggested_questions : [],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -164,8 +193,9 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
         {
           role: 'assistant',
           isError: true,
-          content: `Error querying document: ${msg}`,
+          content: `Error querying documents: ${msg}`,
           sources: [],
+          source_details: [],
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -188,147 +218,138 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
     setTimeout(() => setCopiedIdx(null), 2000);
   };
 
-  const handleBadgeClick = (pageNum) => {
-    setSelectedPageSource(pageNum);
-    setSelectedModalPage(pageNum);
-    setPageModalOpen(true);
-  };
-
-  const samplePrompts = [
-    'What is the central topic and summary of this document?',
-    'What key numbers, statistics, or metrics are mentioned?',
-    'What are the primary conclusions or next steps?',
+  const defaultSamplePrompts = [
+    'Summarize the key topics and findings across all uploaded documents.',
+    'What key numbers, statistics, or metrics are mentioned in the files?',
+    'What are the primary conclusions and recommended next steps?'
   ];
 
   return (
-    <section className="flex-1 min-h-0 glass-card rounded-2xl border border-slate-800/80 flex flex-col h-full overflow-hidden relative">
-      {/* Top Banner */}
-      <div className="flex-shrink-0 px-6 py-3.5 border-b border-slate-800/80 bg-slate-900/40 backdrop-blur-md flex items-center justify-between">
+    <section className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-sm flex flex-col h-full overflow-hidden relative">
+      {/* Top Banner / Scope Bar */}
+      <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 bg-slate-50/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
-          <div className={`p-2 rounded-lg border ${isChatDisabled
-            ? 'bg-slate-800 text-slate-500 border-slate-700'
-            : 'bg-brand-500/10 text-brand-400 border-brand-500/20'
-            }`}>
+          <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200/80">
             <Bot className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <h3 className="text-sm font-bold text-white tracking-tight">
-                {isChatDisabled ? 'Chat Window' : documentInfo?.filename || 'Active Document'}
-              </h3>
-              {!isChatDisabled && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-brand-500/15 text-brand-300 border border-brand-500/30">
-                  {documentInfo?.chunks ? `${documentInfo.chunks} chunks` : 'Indexed'}
-                </span>
-              )}
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                Document Q&A Assistant
+              </h2>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                ChromaDB RRF
+              </span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              {isChatDisabled
-                ? 'Upload a document in the left sidebar to unlock Q&A'
-                : 'Ready for questions'}
+            <p className="text-[11px] text-slate-500">
+              {docCount === 0
+                ? 'No documents uploaded yet • Upload files in Documents tab'
+                : isAllDocs
+                ? `Searching across all ${docCount} uploaded ${docCount === 1 ? 'document' : 'documents'}`
+                : `Searching specifically in: ${activeDocument?.filename}`}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {messages.length > 0 && !isChatDisabled && (
+        {/* Search Target Selector & Clear Chat */}
+        <div className="flex items-center space-x-2.5">
+          {docCount > 0 && (
+            <div className="relative">
+              <select
+                value={activeDocId || 'all'}
+                onChange={(e) => onSelectDoc && onSelectDoc(e.target.value)}
+                className="appearance-none bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 rounded-xl pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs focus:outline-none cursor-pointer"
+              >
+                <option value="all">🌐 All Uploaded Documents ({docCount})</option>
+                {documents.map((d) => (
+                  <option key={d.doc_id} value={d.doc_id}>
+                    📄 {d.filename} ({d.chunks} chunks)
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+          )}
+
+          {messages.length > 0 && (
             <button
               onClick={handleClearChat}
               disabled={loading}
-              title="Clear conversation history for this document"
-              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-red-400 hover:bg-red-500/10 border border-slate-700/60 hover:border-red-500/30 transition-colors disabled:opacity-50"
+              title="Clear conversation history"
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition-colors disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear Chat</span>
+              <span className="hidden sm:inline">Clear</span>
             </button>
           )}
-          <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${isChatDisabled
-            ? 'bg-slate-800/80 text-slate-500 border-slate-700'
-            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-            }`}>
-            <span className={`w-2 h-2 rounded-full ${isChatDisabled ? 'bg-slate-500' : 'bg-emerald-400 animate-pulse'}`} />
-            <span>{isChatDisabled ? 'Waiting for Document' : 'ChromaDB Ready'}</span>
-          </span>
         </div>
       </div>
 
-      {/* Selected Page Source Notification Alert */}
-      {selectedPageSource && (
-        <div className="absolute top-16 right-6 z-20 animate-slide-up">
-          <div className="px-3.5 py-2 rounded-xl bg-brand-900/90 border border-brand-400/50 text-brand-200 text-xs shadow-xl flex items-center space-x-2 backdrop-blur-md">
-            <BookOpen className="w-3.5 h-3.5 text-brand-300" />
-            <span>Citation highlighted: Sourced from <strong>Page {selectedPageSource}</strong></span>
-          </div>
-        </div>
-      )}
-
-      {/* Messages Area - Chat Section Container */}
+      {/* Messages Scroll Area */}
       <div
         ref={chatContainerRef}
-        className="flex-1 min-h-0 overflow-y-scroll custom-scrollbar p-4 sm:p-6 space-y-6"
+        className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6 bg-gradient-to-b from-white via-white to-slate-50/40"
       >
-        {isChatDisabled ? (
-          /* Disabled State Screen */
-          <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 text-slate-600 flex items-center justify-center mb-4">
-              <Lock className="w-6 h-6" />
+        {docCount === 0 ? (
+          /* Empty State: No Documents Uploaded */
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto py-12">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mb-4 shadow-sm">
+              <Layers className="w-7 h-7" />
             </div>
-            <h4 className="text-base font-bold text-white">Chat Interface Disabled</h4>
-            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-              Upload a <strong>.pdf</strong>, <strong>.txt</strong>, or <strong>.docx/.doc</strong> document in the left sidebar to initialize ChromaDB embeddings and unlock questions.
+            <h3 className="text-base font-bold text-slate-900">No Documents Uploaded Yet</h3>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Upload your PDF, Word (.docx), or plain text (.txt) files in the <strong>Documents & Upload</strong> tab. The assistant will index and search from all uploaded files to answer your questions.
             </p>
+            <button
+              onClick={() => onNavigateTab && onNavigateTab('documents')}
+              className="mt-5 flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-sm shadow-indigo-600/20 active:scale-95 transition-all"
+            >
+              <span>Go to Documents & Upload</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         ) : loadingChat ? (
           <div className="h-full flex flex-col items-center justify-center space-y-3 py-16">
-            <Loader2 className="w-7 h-7 text-brand-400 animate-spin" />
-            <p className="text-xs text-slate-400">Loading conversation history from database...</p>
+            <Loader2 className="w-7 h-7 text-indigo-600 animate-spin" />
+            <p className="text-xs text-slate-500 font-medium">Loading conversation history...</p>
           </div>
         ) : messages.length === 0 ? (
           /* Empty / Welcome State with Suggested Questions */
           <div className="h-full flex flex-col justify-center items-center text-center px-4 max-w-lg mx-auto py-10">
-            <div className="w-12 h-12 rounded-2xl bg-brand-500/10 border border-brand-500/20 text-brand-400 flex items-center justify-center mb-4 shadow-lg shadow-brand-500/10">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mb-4 shadow-sm">
               <Sparkles className="w-6 h-6" />
             </div>
-            <h4 className="text-base font-bold text-white">Ask anything about this document</h4>
-            <p className="text-xs text-slate-400 mt-1 mb-6">
-              Retrieves top 4 chunks from ChromaDB and applies strict context synthesis with exact page citations.
+            <h3 className="text-base font-bold text-slate-900">
+              Ask anything across your {docCount} uploaded {docCount === 1 ? 'file' : 'files'}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 mb-6">
+              The LLM will automatically retrieve top vector excerpts from all uploaded files and synthesize accurate answers with citations.
             </p>
 
             <div className="w-full space-y-2 text-left">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center space-x-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-brand-400" />
-                  <span>Suggested Questions for {documentInfo?.filename || 'Document'}</span>
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Suggested Questions:</span>
                 </p>
                 {loadingSuggestions && (
-                  <span className="text-[10px] text-brand-400 flex items-center space-x-1 animate-pulse">
+                  <span className="text-[10px] text-indigo-600 flex items-center space-x-1 animate-pulse">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Generating...</span>
+                    <span>Analyzing...</span>
                   </span>
                 )}
               </div>
 
-              {loadingSuggestions && suggestedQuestions.length === 0 ? (
-                <div className="space-y-2 pt-1">
-                  {[1, 2, 3].map((n) => (
-                    <div key={n} className="w-full p-3 rounded-xl bg-slate-900/40 border border-slate-800/80 animate-pulse flex items-center justify-between">
-                      <div className="h-3 bg-slate-800/80 rounded w-4/5"></div>
-                      <div className="w-3 h-3 bg-slate-800 rounded"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                (suggestedQuestions.length > 0 ? suggestedQuestions : samplePrompts).map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleSend(prompt)}
-                    className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800 hover:border-brand-500/40 text-xs text-slate-300 hover:text-white transition-all group shadow-sm hover:shadow-brand-500/5 active:scale-[0.99]"
-                  >
-                    <span className="truncate pr-2">{prompt}</span>
-                    <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-brand-400 flex-shrink-0 transition-colors" />
-                  </button>
-                ))
-              )}
+              {(suggestedQuestions.length > 0 ? suggestedQuestions : defaultSamplePrompts).map((prompt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSend(prompt)}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-xs text-slate-700 hover:text-indigo-900 transition-all group shadow-2xs active:scale-[0.99]"
+                >
+                  <span className="truncate pr-2 font-medium">{prompt}</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 transition-colors" />
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -336,71 +357,116 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
           messages.map((msg, idx) => (
             <div
               key={idx}
-              className={`flex items-start space-x-3 animate-fade-in ${msg.role === 'user' ? 'justify-end' : 'justify-start'
-                }`}
+              className={`flex items-start space-x-3 animate-fade-in ${
+                msg.role === 'user' ? 'justify-end' : 'justify-start'
+              }`}
             >
               {msg.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-brand-500/20 mt-1">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-1">
                   <Bot className="w-4 h-4" />
                 </div>
               )}
 
               <div
-                className={`max-w-2xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${msg.role === 'user'
-                  ? 'bg-gradient-to-r from-brand-600 to-indigo-600 text-white shadow-md'
-                  : msg.isError
-                    ? 'bg-rose-950/40 border border-rose-500/30 text-rose-200'
-                    : 'bg-slate-900/90 border border-slate-800 text-slate-200 shadow-sm'
-                  }`}
+                className={`max-w-2xl rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
+                  msg.role === 'user'
+                    ? 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 text-white shadow-xs rounded-tr-xs'
+                    : msg.isError
+                    ? 'bg-rose-50 border border-rose-200 text-rose-800 rounded-tl-xs'
+                    : 'bg-white border border-slate-200/90 text-slate-800 shadow-xs rounded-tl-xs'
+                }`}
               >
                 {/* Markdown Rendered Content */}
                 {msg.role === 'assistant' && !msg.isError ? (
-                  <div className="prose prose-invert prose-sm max-w-none space-y-2">
+                  <div className="prose prose-slate prose-sm max-w-none space-y-2">
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
                   <div className="whitespace-pre-wrap">{msg.content}</div>
                 )}
 
-                {/* Clickable Source Page Badges */}
-                {msg.role === 'assistant' && !msg.isError && msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-3.5 pt-3 border-t border-slate-800 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-slate-400 flex items-center space-x-1 mr-1">
-                      <BookOpen className="w-3 h-3 text-brand-400" />
-                      <span>Sources:</span>
-                    </span>
-                    {msg.sources.map((pageNum, sIdx) => (
-                      <button
-                        key={sIdx}
-                        type="button"
-                        onClick={() => handleBadgeClick(pageNum)}
-                        className="group inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/20 text-brand-300 border border-brand-500/40 hover:bg-brand-500/35 hover:border-brand-400 hover:scale-105 active:scale-95 transition-all shadow-sm cursor-pointer"
-                        title={`Click to open Page ${pageNum} in ${documentInfo?.filename || 'document'}`}
-                      >
-                        <span>Page {pageNum}</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-                      </button>
-                    ))}
+                {/* Sourced Documents / Pages Badges */}
+                {msg.role === 'assistant' && !msg.isError && (
+                  (Array.isArray(msg.source_details) && msg.source_details.length > 0) ||
+                  (Array.isArray(msg.sources) && msg.sources.length > 0)
+                ) && (
+                  <div className="mt-3.5 pt-3 border-t border-slate-100 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center space-x-1">
+                      <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Sourced From:</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Array.isArray(msg.source_details) && msg.source_details.length > 0 ? (
+                        msg.source_details.map((detail, sIdx) => (
+                          <button
+                            key={sIdx}
+                            type="button"
+                            onClick={() => onViewPage && onViewPage(detail.doc_id, detail.page, detail.filename)}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 transition-all active:scale-95 shadow-2xs"
+                            title={`Preview ${detail.filename} Page ${detail.page}`}
+                          >
+                            <FileText className="w-3 h-3 text-indigo-500" />
+                            <span>{detail.filename} • Page {detail.page}</span>
+                          </button>
+                        ))
+                      ) : (
+                        msg.sources.map((pageNum, sIdx) => (
+                          <span
+                            key={sIdx}
+                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          >
+                            Page {pageNum}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sequential Follow-up Questions Suggested by LLM */}
+                {msg.role === 'assistant' && !msg.isError && Array.isArray(msg.suggested_questions) && msg.suggested_questions.length > 0 && (
+                  <div className="mt-3.5 pt-3 border-t border-slate-100">
+                    <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-indigo-700 mb-2">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                      <span>Suggested Follow-up Questions:</span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {msg.suggested_questions.map((seqQ, sIdx) => (
+                        <button
+                          key={sIdx}
+                          type="button"
+                          onClick={() => handleSend(seqQ)}
+                          disabled={loading}
+                          className="group w-full flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-slate-50/90 hover:bg-indigo-50/80 border border-slate-200/80 hover:border-indigo-300 text-left text-xs text-slate-700 hover:text-indigo-900 transition-all shadow-2xs active:scale-[0.99] disabled:opacity-50"
+                          title={`Click to ask: "${seqQ}"`}
+                        >
+                          <span className="truncate pr-2 font-medium">{seqQ}</span>
+                          <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform flex-shrink-0" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
 
                 {/* Footer details */}
-                <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-400">
+                <div className={`mt-2.5 flex items-center justify-between text-[10px] ${
+                  msg.role === 'user' ? 'text-indigo-100' : 'text-slate-400'
+                }`}>
                   <span>{msg.time}</span>
                   {msg.role === 'assistant' && !msg.isError && (
                     <button
                       onClick={() => copyToClipboard(msg.content, idx)}
-                      className="hover:text-white transition-colors flex items-center space-x-1"
+                      className="hover:text-slate-700 transition-colors flex items-center space-x-1"
                       title="Copy response"
                     >
                       {copiedIdx === idx ? (
                         <>
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span className="text-emerald-400">Copied</span>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-600 font-medium">Copied</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3 h-3" />
+                          <Copy className="w-3 h-3 text-slate-400" />
                           <span>Copy</span>
                         </>
                       )}
@@ -410,7 +476,7 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
               </div>
 
               {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0 border border-slate-700 mt-1">
+                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center flex-shrink-0 border border-slate-200 mt-1 shadow-2xs">
                   <User className="w-4 h-4" />
                 </div>
               )}
@@ -421,15 +487,17 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
         {/* Loading Spinner */}
         {loading && (
           <div className="flex items-start space-x-3 animate-fade-in">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-600 to-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-brand-500/20 mt-1">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-1">
               <Bot className="w-4 h-4" />
             </div>
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 space-y-1.5">
-              <div className="flex items-center space-x-2 text-brand-400">
+            <div className="bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-4 text-xs text-slate-700 shadow-xs space-y-1.5">
+              <div className="flex items-center space-x-2 text-indigo-600 font-semibold">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="font-semibold">Querying ChromaDB & Synthesizing Answer...</span>
+                <span>Searching ChromaDB Across Uploaded Files...</span>
               </div>
-              <p className="text-[11px] text-slate-500">Searching top 4 vector chunks and applying strict context-only prompt.</p>
+              <p className="text-[11px] text-slate-400">
+                Retrieving top vector excerpts using reciprocal rank fusion and synthesizing answer.
+              </p>
             </div>
           </div>
         )}
@@ -438,7 +506,7 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
       </div>
 
       {/* Input Form */}
-      <div className="flex-shrink-0 p-4 border-t border-slate-800/80 bg-slate-950/60 backdrop-blur-md">
+      <div className="flex-shrink-0 p-4 border-t border-slate-200/90 bg-white/95 backdrop-blur-md">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -452,21 +520,20 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isChatDisabled || loading}
+            disabled={loading}
             placeholder={
-              isChatDisabled
-                ? 'Upload a document in the left sidebar first...'
-                : 'Ask a question about the uploaded document... (Press Enter to ask, Shift+Enter for newline)'
+              isAllDocs
+                ? 'Ask a question across all uploaded documents... (Enter to send, Shift+Enter for newline)'
+                : `Ask a question about ${activeDocument?.filename || 'this document'}... (Enter to send, Shift+Enter for newline)`
             }
-            className={`w-full glass-input custom-scrollbar rounded-xl px-4 py-3 pr-24 text-xs sm:text-sm placeholder:text-slate-500 focus:outline-none transition-all resize-none min-h-[52px] max-h-36 overflow-y-auto ${isChatDisabled ? 'bg-slate-900/30 opacity-50 cursor-not-allowed' : ''
-              }`}
+            className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 custom-scrollbar rounded-xl px-4 py-3 pr-24 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all resize-none min-h-[52px] max-h-36 overflow-y-auto"
           />
 
           <div className="absolute right-2.5 bottom-2.5 flex items-center">
             <button
               type="submit"
-              disabled={isChatDisabled || !question.trim() || loading}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-brand-600/20 transition-all active:scale-95"
+              disabled={!question.trim() || loading}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-all active:scale-95"
             >
               {loading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -479,20 +546,13 @@ export default function ChatWindow({ docId, documentInfo, onLoadingChange }) {
             </button>
           </div>
         </form>
-        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 px-1">
-
+        <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 px-1">
+          <span>
+            {isAllDocs ? 'Searching: All indexed files in ChromaDB' : `Scope: ${activeDocument?.filename}`}
+          </span>
           <span>Shift+Enter for newline</span>
         </div>
       </div>
-
-      {/* In-App Document Page Viewer Modal */}
-      <DocumentPageModal
-        isOpen={pageModalOpen}
-        onClose={() => setPageModalOpen(false)}
-        docId={docId}
-        initialPage={selectedModalPage}
-        filename={documentInfo?.filename || 'Document'}
-      />
     </section>
   );
 }

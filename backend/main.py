@@ -1,11 +1,10 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 
 # Ensure local backend path has highest priority in sys.path
@@ -17,12 +16,25 @@ for p in [str(ROOT_DIR), str(BASE_DIR)]:
 sys.path.insert(0, str(ROOT_DIR))
 sys.path.insert(0, str(BASE_DIR))
 
-from app.services.vector_store import VectorStoreService
-from app.services.llm_service import LLMService
-from app.services.chat_history_service import ChatHistoryService
-from app.services.firebase_service import FirebaseService
-
 load_dotenv()
+
+# Import page routers and services from the pages directory
+from pages import (
+    documents_router,
+    chat_router,
+    upload_router,
+    health_router,
+    vector_store,
+    llm_service,
+    chat_history,
+    firebase_service,
+    AskRequest,
+    AskResponse,
+    SequentialQuestionsRequest,
+    UploadResponse
+)
+from pages.chat import ask_question
+from pages.upload import upload_document
 
 app = FastAPI(
     title="File Summariser.Ai API",
@@ -31,7 +43,6 @@ app = FastAPI(
 )
 
 # CORS Configuration
-# "Always enable CORS in FastAPI for http://localhost:5173"
 cors_origins_env = os.getenv("CORS_ORIGIN", "http://localhost:5173")
 origins = [
     "http://localhost:5173",
@@ -48,372 +59,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Services
-vector_store = VectorStoreService()
-llm_service = LLMService()
-chat_history = ChatHistoryService()
-firebase_service = FirebaseService()
-
 # Startup logging for debugging
 print(f"[startup] Vector DB path: {vector_store.persist_dir}")
 print(f"[startup] Collection: {vector_store.collection.name} ({vector_store.collection.count()} chunks)")
 print(f"[startup] Documents in registry: {len(vector_store.list_documents())}")
 print(f"[startup] Gemini API key configured: {bool(llm_service.gemini_api_key)}")
 
-import asyncio
+# ROUTE ALL PAGES AND COMPONENTS FROM MAIN.PY
+app.include_router(health_router)
+app.include_router(upload_router)
+app.include_router(documents_router)
+app.include_router(chat_router)
 
-# Pydantic Schemas
-class AskRequest(BaseModel):
-    doc_id: str = Field(..., description="The unique ID of the indexed document")
-    question: str = Field(..., description="The user's question regarding the document")
+# Mount frontend build static files & route frontend pages if dist directory is present
+FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
+if FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static_assets")
 
-class AskResponse(BaseModel):
-    answer: str
-    sources: List[int]
+    @app.get("/app/{full_path:path}")
+    @app.get("/chat")
+    @app.get("/documents")
+    @app.get("/upload")
+    @app.get("/system")
+    async def serve_frontend_spa(full_path: str = ""):
+        index_file = FRONTEND_DIST / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        return {"message": "Frontend build index.html not found"}
 
-class UploadResponse(BaseModel):
-    doc_id: str
-    filename: str
-    chunks: int
-    suggested_questions: Optional[List[str]] = None
-
-@app.get("/")
-def root():
-    return {
-        "message": "File Summariser.Ai Backend is running.",
-        "docs_url": "/docs",
-        "health": "/api/health"
-    }
-
-@app.get("/api/health")
-def health():
-    docs = vector_store.list_documents()
-    return {
-        "status": "healthy",
-        "documents_count": len(docs),
-        "vector_db_path": str(vector_store.persist_dir),
-        "cors_allowed": origins,
-        "llm_gemini_active": bool(os.getenv("GEMINI_API_KEY")),
-        "llm_openai_active": bool(os.getenv("OPENAI_API_KEY")),
-        "firebase_active": getattr(firebase_service, "is_active", False)
-    }
-
-@app.get("/api/documents")
-def get_documents():
-    """Returns list of indexed documents in persistent ChromaDB storage and Firebase."""
-    return vector_store.list_documents()
-
-@app.delete("/api/documents/{doc_id}")
-def delete_document(doc_id: str):
-    """Deletes an indexed document from ChromaDB, registry, Firebase, and clears its chat history."""
-    success = vector_store.delete_document(doc_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Document not found or could not be deleted")
-    chat_history.clear_messages(doc_id)
-    if getattr(firebase_service, "is_active", False):
-        try:
-            firebase_service.delete_document(doc_id)
-        except Exception as fe:
-            print(f"[main] Notice deleting from Firebase: {fe}")
-    return {"message": "Document deleted successfully", "doc_id": doc_id}
-
-@app.get("/api/documents/{doc_id}/pages/{page_num}")
-async def get_document_page(doc_id: str, page_num: int):
-    """
-    Returns specific page content, total page count, document filename, and file viewing URLs.
-    """
-    if not doc_id.strip():
-        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
-    if page_num < 1:
-        raise HTTPException(status_code=400, detail="page_num must be >= 1")
-
-    page_data = await asyncio.to_thread(vector_store.get_document_page, doc_id, page_num)
-    if not page_data or not page_data.get("filename"):
-        raise HTTPException(status_code=404, detail="Document or page not found")
-    return page_data
-
-@app.get("/api/documents/{doc_id}/file")
-async def get_document_file(doc_id: str):
-    """
-    Serves the document file inline so PDF browsers can jump directly to #page={page_num}.
-    """
-    if not doc_id.strip():
-        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
-
-    file_path = await asyncio.to_thread(vector_store.get_document_file_path, doc_id)
-    if not file_path or not file_path.exists():
-        raise HTTPException(status_code=404, detail="Document file not found on server")
-
-    reg = vector_store._get_registry()
-    doc_info = reg.get(doc_id, {})
-    filename = doc_info.get("filename", file_path.name)
-    ext = filename.lower().split(".")[-1]
-
-    media_type_map = {
-        "pdf": "application/pdf",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "doc": "application/msword",
-        "txt": "text/plain; charset=utf-8",
-        "md": "text/markdown; charset=utf-8",
-    }
-    media_type = media_type_map.get(ext, "application/octet-stream")
-
-    return FileResponse(
-        path=str(file_path),
-        media_type=media_type,
-        filename=filename,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'}
-    )
-
-@app.get("/api/documents/{doc_id}/suggested-questions")
-async def get_suggested_questions(doc_id: str):
-    """
-    Returns 3 to 4 variable questions specifically tailored to the selected document.
-    """
-    if not doc_id.strip():
-        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
-    questions = await asyncio.to_thread(vector_store.get_suggested_questions, doc_id, llm_service)
-    return {
-        "doc_id": doc_id,
-        "suggested_questions": questions
-    }
-
-@app.get("/api/documents/{doc_id}/chat")
-async def get_document_chat(doc_id: str):
-    """
-    Returns the persistent chat history for the specified document from Firebase Firestore (or SQLite fallback).
-    """
-    if not doc_id.strip():
-        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
-
-    if getattr(firebase_service, "is_active", False):
-        try:
-            fb_messages = await asyncio.to_thread(firebase_service.get_chat_messages, doc_id)
-            if fb_messages and len(fb_messages) > 0:
-                return {
-                    "doc_id": doc_id,
-                    "messages": fb_messages,
-                    "source": "firebase"
-                }
-        except Exception as fe:
-            print(f"[main] Notice reading chat from Firebase: {fe}")
-
-    messages = await asyncio.to_thread(chat_history.get_messages, doc_id)
-    return {
-        "doc_id": doc_id,
-        "messages": messages,
-        "source": "sqlite"
-    }
-
-@app.delete("/api/documents/{doc_id}/chat")
-async def clear_document_chat(doc_id: str):
-    """
-    Clears the chat history for the specified document from Firebase Firestore and SQLite.
-    """
-    if not doc_id.strip():
-        raise HTTPException(status_code=400, detail="doc_id cannot be empty")
-
-    if getattr(firebase_service, "is_active", False):
-        try:
-            await asyncio.to_thread(firebase_service.clear_chat_messages, doc_id)
-        except Exception as fe:
-            print(f"[main] Notice clearing chat from Firebase: {fe}")
-
-    await asyncio.to_thread(chat_history.clear_messages, doc_id)
-    return {
-        "doc_id": doc_id,
-        "status": "cleared"
-    }
-
-@app.post("/api/upload", response_model=UploadResponse)
-async def upload_document(file: UploadFile = File(...)):
-    """
-    Accepts UploadFile (.pdf, .txt, .docx, .doc), extracts text with PyMuPDF / python-docx,
-    splits extracted text using RecursiveCharacterTextSplitter (chunk_size=1000, chunk_overlap=200),
-    generates embeddings, and stores in persistent ChromaDB client at ./vector_db with doc_id and page metadata.
-    Returns: { "doc_id": str, "filename": str, "chunks": int, "suggested_questions": list[str] }
-    """
-    if not file.filename:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No filename provided in upload."
-        )
-
-    ext = file.filename.lower().split(".")[-1]
-    if ext not in ["pdf", "txt", "md", "docx", "doc"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported file type: .{ext}. Supported formats are .pdf, .txt, .docx, and .doc."
-        )
-
-    try:
-        content = await file.read()
-        if not content or len(content) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Uploaded file is empty."
-            )
-
-        # Uses PyMuPDF / python-docx + RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200) + ChromaDB
-        # Non-blocking async thread execution for fast responsiveness on large files
-        result = await asyncio.to_thread(vector_store.index_document, file.filename, content, llm_service, firebase_service)
-        return result
-
-    except HTTPException:
-        raise
-    except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(ve))
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while parsing and indexing document: {str(e)}"
-        )
-
-@app.post("/api/ask", response_model=AskResponse)
-async def ask_question(request: AskRequest):
-    """
-    Accepts { "doc_id": str, "question": str },
-    persists user question to SQLite DB & Firebase Firestore,
-    retrieves the top 4 chunks from ChromaDB via Hybrid RRF Search,
-    passes them to the LLM with a strict context-only prompt,
-    persists assistant response to SQLite DB & Firebase Firestore,
-    and returns: { "answer": str, "sources": list[int] }
-    """
-    if not request.doc_id.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="doc_id cannot be empty."
-        )
-
-    if not request.question.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="question cannot be empty."
-        )
-
-    try:
-        # Store user question in persistent SQLite database & Firebase
-        await asyncio.to_thread(
-            chat_history.add_message,
-            doc_id=request.doc_id,
-            role="user",
-            content=request.question
-        )
-        if getattr(firebase_service, "is_active", False):
-            try:
-                await asyncio.to_thread(
-                    firebase_service.save_chat_message,
-                    doc_id=request.doc_id,
-                    role="user",
-                    content=request.question
-                )
-            except Exception as fe:
-                print(f"[main] Notice saving user message to Firebase: {fe}")
-
-        # Retrieve top 4 chunks from ChromaDB asynchronously
-        chunks, metadatas, sources = await asyncio.to_thread(
-            vector_store.retrieve_top_chunks,
-            doc_id=request.doc_id,
-            question=request.question,
-            n_results=4
-        )
-
-        if not chunks:
-            # Check if the document exists at all in the registry
-            reg = vector_store._get_registry()
-            if request.doc_id not in reg:
-                fallback_ans = f"Document not found. The document ID '{request.doc_id}' does not exist in the database. Please try re-uploading the document."
-            else:
-                fallback_ans = "No relevant content could be retrieved from this document. Please try rephrasing your question or re-uploading the document."
-
-            await asyncio.to_thread(
-                chat_history.add_message,
-                doc_id=request.doc_id,
-                role="assistant",
-                content=fallback_ans,
-                sources=[]
-            )
-            if getattr(firebase_service, "is_active", False):
-                try:
-                    await asyncio.to_thread(
-                        firebase_service.save_chat_message,
-                        doc_id=request.doc_id,
-                        role="assistant",
-                        content=fallback_ans,
-                        sources=[]
-                    )
-                except Exception as fe:
-                    print(f"[main] Notice saving fallback to Firebase: {fe}")
-            return {
-                "answer": fallback_ans,
-                "sources": []
-            }
-
-        # Pass to LLM with strict context-only prompt
-        answer = await asyncio.to_thread(
-            llm_service.generate_answer,
-            question=request.question,
-            chunks=chunks,
-            metadatas=metadatas
-        )
-
-        # Extract cited pages if explicitly referenced in answer, else use retrieved sources
-        import re
-        cited_pages = [int(p) for p in re.findall(r"(?:Page|p\.)\s*(\d+)", answer, re.IGNORECASE)]
-        valid_cited = [p for p in cited_pages if p in sources] if sources else cited_pages
-        final_sources = sorted(list(set(valid_cited if valid_cited else sources)))
-
-        # Store assistant response and cited sources in persistent SQLite database & Firebase
-        await asyncio.to_thread(
-            chat_history.add_message,
-            doc_id=request.doc_id,
-            role="assistant",
-            content=answer,
-            sources=final_sources
-        )
-        if getattr(firebase_service, "is_active", False):
-            try:
-                await asyncio.to_thread(
-                    firebase_service.save_chat_message,
-                    doc_id=request.doc_id,
-                    role="assistant",
-                    content=answer,
-                    sources=final_sources
-                )
-            except Exception as fe:
-                print(f"[main] Notice saving assistant answer to Firebase: {fe}")
-
-        # Return answer along with source page numbers
-        return {
-            "answer": answer,
-            "sources": final_sources
-        }
-
-    except Exception as e:
-        print(f"[ask] Error querying document {request.doc_id}: {e}")
-        # Record error message in chat history so context is preserved
-        await asyncio.to_thread(
-            chat_history.add_message,
-            doc_id=request.doc_id,
-            role="assistant",
-            content=f"Error querying document: {str(e)}",
-            is_error=True
-        )
-        if getattr(firebase_service, "is_active", False):
-            try:
-                await asyncio.to_thread(
-                    firebase_service.save_chat_message,
-                    doc_id=request.doc_id,
-                    role="assistant",
-                    content=f"Error querying document: {str(e)}",
-                    is_error=True
-                )
-            except Exception:
-                pass
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to query document: {str(e)}"
-        )
+__all__ = [
+    "app",
+    "vector_store",
+    "llm_service",
+    "chat_history",
+    "firebase_service",
+    "ask_question",
+    "upload_document",
+    "AskRequest",
+    "AskResponse",
+    "SequentialQuestionsRequest",
+    "UploadResponse"
+]
 
 if __name__ == "__main__":
     import uvicorn

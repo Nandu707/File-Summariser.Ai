@@ -43,12 +43,18 @@ class ChatHistoryService:
                     content TEXT NOT NULL,
                     sources TEXT, -- JSON list of page numbers
                     timestamp TEXT NOT NULL,
-                    is_error INTEGER DEFAULT 0
+                    is_error INTEGER DEFAULT 0,
+                    suggested_questions TEXT -- JSON list of follow-up questions
                 )
             """)
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_messages_doc_id ON messages (doc_id)
             """)
+            # Migration support if table already existed without suggested_questions column
+            try:
+                cursor.execute("ALTER TABLE messages ADD COLUMN suggested_questions TEXT")
+            except Exception:
+                pass
             conn.commit()
 
     def add_message(
@@ -58,19 +64,21 @@ class ChatHistoryService:
         content: str,
         sources: Optional[List[int]] = None,
         is_error: bool = False,
-        timestamp: Optional[str] = None
+        timestamp: Optional[str] = None,
+        suggested_questions: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """Adds a message to the persistent database."""
         if not timestamp:
             timestamp = datetime.now().strftime("%I:%M %p")
         sources_json = json.dumps(sources or [])
+        seq_questions_json = json.dumps(suggested_questions or []) if suggested_questions else "[]"
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO messages (doc_id, role, content, sources, timestamp, is_error)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (doc_id, role, content, sources_json, timestamp, 1 if is_error else 0))
+                INSERT INTO messages (doc_id, role, content, sources, timestamp, is_error, suggested_questions)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (doc_id, role, content, sources_json, timestamp, 1 if is_error else 0, seq_questions_json))
             msg_id = cursor.lastrowid
             conn.commit()
 
@@ -80,6 +88,7 @@ class ChatHistoryService:
                 "role": role,
                 "content": content,
                 "sources": sources or [],
+                "suggested_questions": suggested_questions or [],
                 "timestamp": timestamp,
                 "time": timestamp,
                 "is_error": is_error,
@@ -91,7 +100,7 @@ class ChatHistoryService:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, doc_id, role, content, sources, timestamp, is_error
+                SELECT id, doc_id, role, content, sources, timestamp, is_error, suggested_questions
                 FROM messages
                 WHERE doc_id = ?
                 ORDER BY id ASC
@@ -107,12 +116,20 @@ class ChatHistoryService:
                     except Exception:
                         sources_list = []
 
+                seq_questions = []
+                try:
+                    if "suggested_questions" in r.keys() and r["suggested_questions"]:
+                        seq_questions = json.loads(r["suggested_questions"])
+                except Exception:
+                    seq_questions = []
+
                 result.append({
                     "id": r["id"],
                     "doc_id": r["doc_id"],
                     "role": r["role"],
                     "content": r["content"],
                     "sources": sources_list,
+                    "suggested_questions": seq_questions,
                     "timestamp": r["timestamp"],
                     "time": r["timestamp"],
                     "isError": bool(r["is_error"])

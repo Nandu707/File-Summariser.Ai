@@ -7,6 +7,7 @@
     "dev:backend": "cd backend && .\\.venv\\Scripts\\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload",
     "dev:frontend": "cd frontend && npm run dev",
     "dev": "npx -y concurrently -k -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start": "npm run dev",
     "build:frontend": "cd frontend && npm run build"
   },
   "keywords": ["rag", "fastapi", "chromadb", "pymupdf", "react", "tailwind"],

@@ -427,23 +427,35 @@ class VectorStoreService:
 
     def get_suggested_questions(self, doc_id: str, llm_service=None) -> List[str]:
         """
-        Retrieves or dynamically generates 3-4 variable suggested questions suitable for this document.
+        Retrieves or dynamically generates 3-4 variable suggested questions suitable for this document or all documents.
         """
+        is_all = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
         reg = self._get_registry()
-        doc = reg.get(doc_id)
-        if doc and doc.get("suggested_questions") and len(doc["suggested_questions"]) >= 2:
-            return doc["suggested_questions"]
 
-        filename = doc.get("filename", "document") if doc else "document"
-        
-        # Retrieve sample chunks from collection for this document
-        sample_chunks = []
-        try:
-            res = self.collection.get(where={"doc_id": doc_id}, limit=3)
-            if res and res.get("documents"):
-                sample_chunks = res["documents"]
-        except Exception as e:
-            print(f"[VectorStore] Notice getting chunks for suggestions: {e}")
+        if is_all:
+            filename = "all uploaded documents"
+            sample_chunks = []
+            try:
+                res = self.collection.get(limit=3)
+                if res and res.get("documents"):
+                    sample_chunks = res["documents"]
+            except Exception as e:
+                print(f"[VectorStore] Notice getting chunks for all-docs suggestions: {e}")
+        else:
+            doc = reg.get(doc_id)
+            if doc and doc.get("suggested_questions") and len(doc["suggested_questions"]) >= 2:
+                return doc["suggested_questions"]
+
+            filename = doc.get("filename", "document") if doc else "document"
+            
+            # Retrieve sample chunks from collection for this document
+            sample_chunks = []
+            try:
+                res = self.collection.get(where={"doc_id": doc_id}, limit=3)
+                if res and res.get("documents"):
+                    sample_chunks = res["documents"]
+            except Exception as e:
+                print(f"[VectorStore] Notice getting chunks for suggestions: {e}")
 
         questions = []
         if llm_service is not None:
@@ -460,7 +472,7 @@ class VectorStoreService:
             ]
 
         # Cache in registry if document exists
-        if doc:
+        if not is_all and doc:
             doc["suggested_questions"] = questions
             reg[doc_id] = doc
             self._save_registry(reg)
@@ -669,50 +681,87 @@ class VectorStoreService:
 
         return score
 
-    def retrieve_top_chunks(self, doc_id: str, question: str, n_results: int = 4) -> Tuple[List[str], List[Dict[str, Any]], List[int]]:
+    def retrieve_top_chunks(self, doc_id: Optional[str], question: str, n_results: int = 4) -> Tuple[List[str], List[Dict[str, Any]], List[int]]:
         """
         High-Accuracy Hybrid Retrieval:
-        1. Retrieves candidate chunks using dense ChromaDB vector search.
+        1. Retrieves candidate chunks using dense ChromaDB vector search across a specific document or all uploaded documents.
         2. Ranks candidates using Reciprocal Rank Fusion (RRF) combining vector distance and lexical score.
         3. Suppresses near-duplicate chunks for diverse and complete context.
         4. Returns the top 4 most accurate chunks with source page numbers.
         """
-        matching = self.collection.get(where={"doc_id": doc_id})
-        target_col = self.collection
-        if not matching or not matching["ids"]:
+        is_all_docs = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
+
+        if is_all_docs:
+            matching = self.collection.get()
+            target_col = self.collection
+            if not matching or not matching["ids"]:
+                try:
+                    col_names = [c.name for c in self.client.list_collections()]
+                    if "task_rag_documents" in col_names:
+                        legacy_col = self.client.get_collection("task_rag_documents")
+                        legacy_match = legacy_col.get()
+                        if legacy_match and legacy_match["ids"]:
+                            matching = legacy_match
+                            target_col = legacy_col
+                except Exception:
+                    pass
+
+            if not matching or not matching["ids"]:
+                return [], [], []
+
+            doc_chunk_count = len(matching["ids"])
+            candidate_k = min(32, doc_chunk_count)
+
             try:
-                col_names = [c.name for c in self.client.list_collections()]
-                if "task_rag_documents" in col_names:
-                    legacy_col = self.client.get_collection("task_rag_documents")
-                    legacy_match = legacy_col.get(where={"doc_id": doc_id})
-                    if legacy_match and legacy_match["ids"]:
-                        matching = legacy_match
-                        target_col = legacy_col
-            except Exception:
-                pass
+                query_res = target_col.query(
+                    query_texts=[question],
+                    n_results=candidate_k
+                )
+                cand_chunks: List[str] = query_res.get("documents", [[]])[0]
+                cand_metas: List[Dict[str, Any]] = query_res.get("metadatas", [[]])[0]
+                cand_distances: List[float] = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
+            except Exception as query_err:
+                print(f"[VectorStore] Dense query fallback notice (all docs): {query_err}")
+                cand_chunks = []
+                cand_metas = []
+                cand_distances = []
+        else:
+            matching = self.collection.get(where={"doc_id": doc_id})
+            target_col = self.collection
+            if not matching or not matching["ids"]:
+                try:
+                    col_names = [c.name for c in self.client.list_collections()]
+                    if "task_rag_documents" in col_names:
+                        legacy_col = self.client.get_collection("task_rag_documents")
+                        legacy_match = legacy_col.get(where={"doc_id": doc_id})
+                        if legacy_match and legacy_match["ids"]:
+                            matching = legacy_match
+                            target_col = legacy_col
+                except Exception:
+                    pass
 
-        if not matching or not matching["ids"]:
-            return [], [], []
+            if not matching or not matching["ids"]:
+                return [], [], []
 
-        doc_chunk_count = len(matching["ids"])
+            doc_chunk_count = len(matching["ids"])
 
-        # Fetch candidate pool (up to 32 chunks or all document chunks if fewer)
-        candidate_k = min(32, doc_chunk_count)
+            # Fetch candidate pool (up to 32 chunks or all document chunks if fewer)
+            candidate_k = min(32, doc_chunk_count)
 
-        try:
-            query_res = target_col.query(
-                query_texts=[question],
-                n_results=candidate_k,
-                where={"doc_id": doc_id}
-            )
-            cand_chunks: List[str] = query_res.get("documents", [[]])[0]
-            cand_metas: List[Dict[str, Any]] = query_res.get("metadatas", [[]])[0]
-            cand_distances: List[float] = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
-        except Exception as query_err:
-            print(f"[VectorStore] Dense query fallback notice: {query_err}")
-            cand_chunks = []
-            cand_metas = []
-            cand_distances = []
+            try:
+                query_res = target_col.query(
+                    query_texts=[question],
+                    n_results=candidate_k,
+                    where={"doc_id": doc_id}
+                )
+                cand_chunks: List[str] = query_res.get("documents", [[]])[0]
+                cand_metas: List[Dict[str, Any]] = query_res.get("metadatas", [[]])[0]
+                cand_distances: List[float] = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
+            except Exception as query_err:
+                print(f"[VectorStore] Dense query fallback notice: {query_err}")
+                cand_chunks = []
+                cand_metas = []
+                cand_distances = []
 
         # If vector query didn't return candidates but document has chunks, use all document chunks
         if not cand_chunks and matching and matching.get("documents"):

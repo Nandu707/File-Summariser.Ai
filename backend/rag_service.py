@@ -297,12 +297,12 @@ class RAGService:
                 client = genai.Client(api_key=gemini_api_key)
                 prompt = (
                     f"You are an accurate, helpful assistant answering questions strictly based on the provided document excerpts.\n"
-                    f"Always reference the relevant page numbers in your answer when citing facts.\n\n"
+                    f"Do not include page numbers, source citations, or page references in your answer. Present facts directly.\n\n"
                     f"Context:\n{context_str}\n\n"
                     f"Question: {question}\n\n"
                     f"Answer:"
                 )
-                for model_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-flash-latest"]:
+                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
                     try:
                         response = client.models.generate_content(
                             model=model_name,
@@ -324,7 +324,7 @@ class RAGService:
                 client = OpenAI(api_key=openai_api_key)
                 prompt = (
                     f"You are an accurate assistant answering questions strictly based on the provided document excerpts.\n"
-                    f"Cite the relevant page numbers from the context in your answer.\n\n"
+                    f"Do not include page numbers, source citations, or page references in your answer. Present facts directly.\n\n"
                     f"Context:\n{context_str}\n\n"
                     f"Question: {question}\n\n"
                     f"Answer:"

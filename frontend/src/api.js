@@ -65,6 +65,23 @@ export async function getSuggestedQuestions(docId) {
   return res.json();
 }
 
+export async function getSequentialQuestions(docId, question, answer = '') {
+  const res = await fetch(`${API_BASE_URL}/api/sequential-questions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      doc_id: docId,
+      question: question,
+      answer: answer,
+    }),
+  });
+  if (!res.ok) throw new Error('Failed to generate sequential questions');
+  return res.json();
+}
+
+
 export async function getDocumentChat(docId) {
   const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/chat`);
   if (!res.ok) throw new Error('Failed to fetch chat history');

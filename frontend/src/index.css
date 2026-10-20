@@ -4,97 +4,99 @@
 
 @layer base {
   * {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(226, 232, 240, 0.9);
   }
   
   body {
-    background-color: #030712;
+    background-color: #ffffff;
     background-image: 
-      radial-gradient(at 0% 0%, rgba(14, 135, 233, 0.08) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
-      radial-gradient(at 50% 100%, rgba(168, 85, 247, 0.05) 0px, transparent 50%);
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(56, 189, 248, 0.05) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(248, 250, 252, 0.8) 0px, transparent 50%);
     background-attachment: fixed;
-    color: #f1f5f9;
+    color: #0f172a;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
 @layer utilities {
+  /* Elegant light glassmorphism card */
   .glass-card {
-    background: rgba(15, 23, 42, 0.65);
+    background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
   }
 
   .glass-card-hover {
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .glass-card-hover:hover {
-    border-color: rgba(56, 166, 246, 0.4);
-    box-shadow: 0 12px 40px -8px rgba(14, 135, 233, 0.2);
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 12px 30px -8px rgba(99, 102, 241, 0.12), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
     transform: translateY(-2px);
   }
 
   .glass-input {
-    background: rgba(15, 23, 42, 0.5);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #f8fafc;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+    transition: all 0.2s ease;
   }
   .glass-input:focus {
-    border-color: #38a6f6;
+    border-color: #6366f1;
     outline: none;
-    box-shadow: 0 0 0 2px rgba(56, 166, 246, 0.25);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
   }
 
   .glow-badge {
-    background: linear-gradient(135deg, rgba(14, 135, 233, 0.2), rgba(99, 102, 241, 0.2));
-    border: 1px solid rgba(56, 166, 246, 0.3);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(59, 130, 246, 0.08));
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    color: #4338ca;
   }
 }
 
-/* Custom sleek scrollbars with Firefox & Webkit support */
+/* Custom sleek scrollbars for light theme */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(56, 189, 248, 0.6) rgba(15, 23, 42, 0.7);
+  scrollbar-color: rgba(148, 163, 184, 0.6) rgba(241, 245, 249, 0.8);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(241, 245, 249, 0.8);
   border-radius: 9999px;
-  border-left: 1px solid rgba(255, 255, 255, 0.05);
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.55);
+  background: rgba(148, 163, 184, 0.5);
   border-radius: 9999px;
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  border: 1px solid transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.85);
+  background: rgba(100, 116, 139, 0.8);
 }
 
-/* Global scrollbars */
+/* Global light scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: #f8fafc;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.45);
+  background: #cbd5e1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.8);
+  background: #94a3b8;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(56, 189, 248, 0.5) rgba(15, 23, 42, 0.6);
+  scrollbar-color: #cbd5e1 #f8fafc;
 }

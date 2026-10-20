@@ -268,7 +268,8 @@ class FirebaseService:
         content: str,
         sources: Optional[List[int]] = None,
         is_error: bool = False,
-        timestamp: Optional[str] = None
+        timestamp: Optional[str] = None,
+        suggested_questions: Optional[List[str]] = None
     ) -> Optional[str]:
         """
         Stores a chat message (user question or assistant answer) in Firestore.
@@ -285,6 +286,7 @@ class FirebaseService:
             "role": role,
             "content": content,
             "sources": sources or [],
+            "suggested_questions": suggested_questions or [],
             "is_error": is_error,
             "timestamp": timestamp,
             "created_at": datetime.utcnow().isoformat()
@@ -303,15 +305,18 @@ class FirebaseService:
             try:
                 url = f"{self.firestore_base_url}/documents/{doc_id}/messages?key={self.api_key}"
                 body = {"fields": _to_firestore_fields(msg_data)}
-                r = requests.post(url, json=body, timeout=10)
+                r = requests.post(url, json=body, timeout=3)
                 if r.status_code in [200, 201]:
                     res_json = r.json()
                     name = res_json.get("name", "")
                     return name.split("/")[-1] if name else "id"
+                elif r.status_code == 404:
+                    self.is_active = False
+                    print("[Firebase] Firestore database (default) does not exist for project. Auto-disabled to eliminate latency.")
                 else:
                     print(f"[Firebase Firestore REST] Save message status {r.status_code}: {r.text[:120]}")
             except Exception as e:
-                print(f"[Firebase REST] Error saving message: {e}")
+                print(f"[Firebase REST] Notice saving message: {e}")
 
         return None
 
@@ -335,6 +340,7 @@ class FirebaseService:
                         "role": data.get("role", "user"),
                         "content": data.get("content", ""),
                         "sources": data.get("sources", []),
+                        "suggested_questions": data.get("suggested_questions", []),
                         "timestamp": data.get("timestamp", ""),
                         "time": data.get("timestamp", ""),
                         "isError": bool(data.get("is_error", False))
@@ -362,6 +368,7 @@ class FirebaseService:
                             "role": fields.get("role", "user"),
                             "content": fields.get("content", ""),
                             "sources": fields.get("sources", []),
+                            "suggested_questions": fields.get("suggested_questions", []),
                             "timestamp": fields.get("timestamp", ""),
                             "time": fields.get("timestamp", ""),
                             "isError": bool(fields.get("is_error", False)),
