@@ -224,14 +224,6 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
             <span>Refresh</span>
           </button>
-
-          <button
-            onClick={() => onNavigateTab && onNavigateTab('chat')}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-xs transition-all active:scale-95"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Chat with All Documents</span>
-          </button>
         </div>
       </div>
 

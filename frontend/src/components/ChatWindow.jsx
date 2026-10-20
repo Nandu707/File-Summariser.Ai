@@ -15,7 +15,8 @@ import {
   Layers,
   BookOpen,
   ArrowRight,
-  ChevronDown
+  ChevronDown,
+  ExternalLink
 } from 'lucide-react';
 
 export default function ChatWindow({
@@ -218,6 +219,27 @@ export default function ChatWindow({
     setTimeout(() => setCopiedIdx(null), 2000);
   };
 
+  const handleOpenSourcePdf = (docId, pageNum, filename) => {
+    let targetDocId = docId;
+    if (!targetDocId || targetDocId === 'all') {
+      if (activeDocId && activeDocId !== 'all') {
+        targetDocId = activeDocId;
+      } else if (filename && Array.isArray(documents) && documents.length > 0) {
+        const found = documents.find((d) => d.filename === filename);
+        if (found) targetDocId = found.doc_id;
+      }
+      if (!targetDocId && Array.isArray(documents) && documents.length > 0) {
+        targetDocId = documents[0].doc_id;
+      }
+    }
+
+    if (!targetDocId) return;
+
+    const page = pageNum || 1;
+    const pdfUrl = `http://localhost:8000/api/documents/${targetDocId}/file#page=${page}`;
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+  };
+
   const defaultSamplePrompts = [
     'Summarize the key topics and findings across all uploaded documents.',
     'What key numbers, statistics, or metrics are mentioned in the files?',
@@ -401,23 +423,34 @@ export default function ChatWindow({
                           <button
                             key={sIdx}
                             type="button"
-                            onClick={() => onViewPage && onViewPage(detail.doc_id, detail.page, detail.filename)}
-                            className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 transition-all active:scale-95 shadow-2xs"
-                            title={`Preview ${detail.filename} Page ${detail.page}`}
+                            onClick={() => handleOpenSourcePdf(detail.doc_id, detail.page, detail.filename)}
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
+                            title={`Open ${detail.filename || 'PDF'} at Page ${detail.page} in PDF viewer`}
                           >
-                            <FileText className="w-3 h-3 text-indigo-500" />
-                            <span>{detail.filename} • Page {detail.page}</span>
+                            <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
+                            <span>{detail.filename ? `${detail.filename} • ` : ''}Page {detail.page}</span>
+                            <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 ml-0.5" />
                           </button>
                         ))
                       ) : (
-                        msg.sources.map((pageNum, sIdx) => (
-                          <span
-                            key={sIdx}
-                            className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
-                          >
-                            Page {pageNum}
-                          </span>
-                        ))
+                        msg.sources.map((pageNum, sIdx) => {
+                          const targetDocId = activeDocId !== 'all' ? activeDocId : (documents[0]?.doc_id || null);
+                          const matchingDoc = documents.find((d) => d.doc_id === targetDocId);
+                          const fn = matchingDoc?.filename || '';
+                          return (
+                            <button
+                              key={sIdx}
+                              type="button"
+                              onClick={() => handleOpenSourcePdf(targetDocId, pageNum, fn)}
+                              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
+                              title={`Open ${fn || 'PDF'} at Page ${pageNum} in PDF viewer`}
+                            >
+                              <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
+                              <span>{fn ? `${fn} • ` : ''}Page {pageNum}</span>
+                              <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 ml-0.5" />
+                            </button>
+                          );
+                        })
                       )}
                     </div>
                   </div>

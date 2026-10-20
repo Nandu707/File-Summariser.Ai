@@ -137,7 +137,8 @@ async def ask_question(request: AskRequest):
             role="assistant",
             content=answer,
             sources=sorted_sources,
-            suggested_questions=sequential_questions
+            suggested_questions=sequential_questions,
+            source_details=source_details
         )
         if getattr(firebase_service, "is_active", False):
             asyncio.create_task(

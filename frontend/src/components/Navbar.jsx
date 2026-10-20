@@ -1,5 +1,4 @@
-import React from 'react';
-import { Database, MessageSquare, Layers, Sparkles } from 'lucide-react';
+import { Database, MessageSquare, Layers } from 'lucide-react';
 
 export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus, docCount = 0 }) {
   const navItems = [
@@ -87,24 +86,7 @@ export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus,
               </span>
             </div>
 
-            {/* Quick Switch Button */}
-            {activeTab === 'chat' ? (
-              <button
-                onClick={() => onSelectTab('documents')}
-                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all active:scale-95"
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Manage Files ({docCount})</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => onSelectTab('chat')}
-                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-xs transition-all active:scale-95"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                <span>Go to Chat</span>
-              </button>
-            )}
+
           </div>
         </div>
 
