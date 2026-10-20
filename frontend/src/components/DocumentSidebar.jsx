@@ -424,6 +424,14 @@ export default function DocumentSidebar({
           </div>
         )}
       </div>
+
+      {/* Retention Notice Footer */}
+      <div className="p-3 border-t border-slate-200/80 bg-slate-50/50">
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 justify-center text-center">
+          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span>Chats older than 30 days are deleted automatically</span>
+        </div>
+      </div>
     </aside>
   );
 }

@@ -244,9 +244,16 @@ class FirebaseService:
             try:
                 self.clear_chat_messages(doc_id)
                 self.db.collection("documents").document(doc_id).delete()
+                if hasattr(self, "bucket") and self.bucket:
+                    try:
+                        blobs = self.bucket.list_blobs(prefix=f"documents/{doc_id}/")
+                        for b in blobs:
+                            b.delete()
+                    except Exception:
+                        pass
                 return True
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Firebase Admin] Error deleting document {doc_id}: {e}")
 
         # REST API Mode
         if self.mode == "rest" and self.api_key:

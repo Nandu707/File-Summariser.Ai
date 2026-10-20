@@ -54,10 +54,17 @@ class LLMService:
             context_parts.append(f"[Excerpt {idx + 1} | {file_label}Page {page_num}]:\n{chunk.strip()}")
         return "\n\n".join(context_parts)
 
-    def generate_answer(self, question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
+    def generate_answer(
+        self,
+        question: str,
+        chunks: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
         """
         Passes retrieved chunks to the LLM with a strict context-only prompt,
         returning the answer. Primary: Google Gemini; Secondary: OpenAI; Fallback: offline grounded.
+        Includes leak-free conversation history if provided.
         """
         if not chunks:
             return "The answer is not in any uploaded file."
@@ -74,12 +81,23 @@ class LLMService:
                         available_files.append(fn)
         files_list_str = ", ".join(available_files) if available_files else "None"
 
+        # Format conversation history if available
+        history_str = ""
+        if history and len(history) > 0:
+            hist_parts = []
+            for h in history[-6:]: # Limit to last 6 turns for prompt efficiency
+                role = "User" if h.get("role") == "user" else "Assistant"
+                hist_parts.append(f"{role}: {h.get('content', '').strip()}")
+            if hist_parts:
+                history_str = "\n\n--- PREVIOUS CONVERSATION (ACTIVE FILES ONLY) ---\n" + "\n".join(hist_parts) + "\n--- END CONVERSATION ---\n"
+
         prompt = (
             f"{STRICT_CONTEXT_SYSTEM_PROMPT}\n\n"
             f"Available uploaded files: {files_list_str}\n\n"
             f"--- PROVIDED FILE EXCERPTS ---\n"
             f"{context_str}\n"
-            f"--- END OF EXCERPTS ---\n\n"
+            f"--- END OF EXCERPTS ---\n"
+            f"{history_str}\n"
             f"Question: {question}\n\n"
             f"Answer:"
         )
@@ -114,12 +132,15 @@ class LLMService:
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=self.openai_api_key)
+                messages_payload = [{"role": "system", "content": STRICT_CONTEXT_SYSTEM_PROMPT}]
+                if history:
+                    for h in history[-6:]:
+                        messages_payload.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+                messages_payload.append({"role": "user", "content": f"Context:\n{context_str}\n\nQuestion: {question}"})
+
                 res = client.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": STRICT_CONTEXT_SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Context:\n{context_str}\n\nQuestion: {question}"}
-                    ],
+                    messages=messages_payload,
                     temperature=0.0,
                 )
                 content = res.choices[0].message.content
@@ -324,28 +345,81 @@ class LLMService:
     def _generate_heuristic_suggested_questions(self, filename: str, sample_chunks: List[str]) -> List[str]:
         text_corpus = " ".join(sample_chunks).lower()
         fn_lower = filename.lower()
+        base_name = re.sub(r"\.[a-zA-Z0-9]+$", "", filename)
         questions = []
 
-        if any(term in fn_lower or term in text_corpus for term in ["resume", "cv", "candidate", "engineer", "experience", "education"]):
-            questions.append(f"What are the candidate's core technical skills and qualifications?")
-            questions.append(f"What work experience, internships, and key projects are detailed?")
-            questions.append(f"What degrees, certifications, or educational background are listed?")
-            questions.append(f"What tools, frameworks, and technologies is the candidate experienced with?")
-        elif any(term in fn_lower or term in text_corpus for term in ["report", "project", "system", "architecture", "design", "development", "implementation"]):
-            questions.append(f"What is the main problem statement and scope of this project?")
-            questions.append(f"What system architecture, modules, and database structures are described?")
-            questions.append(f"What technologies, frameworks, and APIs are implemented?")
-            questions.append(f"What are the major conclusions, test results, and next steps?")
-        elif any(term in fn_lower or term in text_corpus for term in ["abstract", "research", "paper", "quantum", "algorithm", "study"]):
-            questions.append(f"What is the central research objective and methodology?")
-            questions.append(f"What key algorithms, models, or experiments are discussed?")
-            questions.append(f"What are the primary findings and demonstrated results?")
-            questions.append(f"What future research directions or applications are proposed?")
+        # Check if genuinely a resume / CV
+        is_resume = (
+            any(term in fn_lower for term in ["resume", "cv", "curriculum_vitae", "biodata"]) or
+            ("curriculum vitae" in text_corpus) or
+            ("technical skills" in text_corpus and "work experience" in text_corpus and "education" in text_corpus and "candidate" in text_corpus)
+        )
+
+        if is_resume:
+            questions.append("What are the candidate's core technical skills and qualifications?")
+            questions.append("What work experience, internships, and key projects are detailed?")
+            questions.append("What degrees, certifications, or educational background are listed?")
+            questions.append("What tools, frameworks, and technologies is the candidate experienced with?")
+            return questions[:4]
+
+        # Extract meaningful named entities or topics from sample chunks
+        combined_samples = " ".join(sample_chunks)
+        entity_matches = re.findall(r"\b[A-Z][a-zA-Z0-9_\-]{2,}(?:\s+[A-Z][a-zA-Z0-9_\-]+)?\b", combined_samples)
+        common_words = {
+            "the", "this", "that", "these", "those", "from", "with", "have", "been", "were",
+            "page", "pages", "document", "chapter", "section", "table", "figure", "index",
+            "author", "title", "rights", "reserved", "copyright", "published", "edition",
+            "william", "enter", "exit", "scene", "public"
+        }
+        entities = []
+        for em in entity_matches:
+            clean_em = em.strip()
+            if clean_em.lower() not in common_words and len(clean_em) > 2:
+                if clean_em not in entities and clean_em.lower() not in [e.lower() for e in entities]:
+                    entities.append(clean_em)
+                if len(entities) >= 4:
+                    break
+
+        # Check document category
+        if any(term in fn_lower or term in text_corpus for term in ["play", "act ", "scene ", "tragedy", "comedy", "novel", "poem", "story", "shakespeare"]):
+            if len(entities) >= 2:
+                questions.append(f"What key events and conflicts involve {entities[0]} in {base_name}?")
+                questions.append(f"How do {entities[0]} and {entities[1]} interact throughout the text?")
+                questions.append(f"What are the central themes, plot developments, and settings described in {base_name}?")
+            else:
+                questions.append(f"What is the central story, setting, and main conflict in {base_name}?")
+                questions.append(f"Who are the primary characters and what motivates them?")
+                questions.append(f"What are the major plot developments and climax in {base_name}?")
+        elif any(term in fn_lower or term in text_corpus for term in ["report", "project", "system", "architecture", "design", "development", "implementation", "vitallink", "framework", "api"]):
+            if len(entities) >= 2:
+                questions.append(f"What is the core objective and architecture of {entities[0]}?")
+                questions.append(f"How does {entities[0]} utilize or integrate with {entities[1]}?")
+                questions.append(f"What are the key technical specifications and outcomes described in {base_name}?")
+            else:
+                questions.append(f"What is the main problem statement and scope of {base_name}?")
+                questions.append(f"What system architecture, modules, and database structures are described?")
+                questions.append(f"What technologies, frameworks, and APIs are implemented?")
+                questions.append(f"What are the major conclusions and test results in {base_name}?")
+        elif any(term in fn_lower or term in text_corpus for term in ["abstract", "research", "paper", "quantum", "algorithm", "study", "analysis"]):
+            if len(entities) >= 1:
+                questions.append(f"What is the central research methodology and role of {entities[0]} in {base_name}?")
+            else:
+                questions.append(f"What is the central research objective and methodology of {base_name}?")
+            questions.append(f"What key algorithms, models, or experimental findings are presented?")
+            questions.append(f"What primary conclusions, metrics, and future directions are proposed?")
         else:
-            base_name = re.sub(r"\.[a-zA-Z0-9]+$", "", filename)
-            questions.append(f"What is the main purpose and summary of {base_name}?")
-            questions.append(f"What key metrics, details, or statistics are outlined in this document?")
-            questions.append(f"What are the primary takeaways and conclusions?")
+            if len(entities) >= 2:
+                questions.append(f"What key information regarding {entities[0]} is detailed in {base_name}?")
+                questions.append(f"How is {entities[1]} explained or utilized in this document?")
+                questions.append(f"What are the primary conclusions and takeaways from {base_name}?")
+            elif len(entities) == 1:
+                questions.append(f"What is the main discussion regarding {entities[0]} in {base_name}?")
+                questions.append(f"What key data, facts, or statistics are outlined in {base_name}?")
+                questions.append(f"What are the primary takeaways and recommendations?")
+            else:
+                questions.append(f"What is the main purpose and summary of {base_name}?")
+                questions.append(f"What key facts, data, or findings are outlined in this document?")
+                questions.append(f"What are the primary takeaways and conclusions from {base_name}?")
 
         return questions[:4]
 
@@ -571,44 +645,48 @@ class LLMService:
         chunks: Optional[List[str]] = None
     ) -> List[str]:
         """
-        Offline fallback that generates 3 intelligent sequential questions by extracting
-        key entities and topics from the previous Q&A exchange and the document.
+        Offline fallback that generates 3 intelligent sequential questions strictly relatable
+        to this file and the previous Q&A exchange.
         """
+        base_name = re.sub(r"\.[a-zA-Z0-9]+$", "", filename)
         combined_text = f"{question} {answer}"
-        # Extract meaningful terms (capitalized words, technical terms, keywords)
-        words = re.findall(r"\b[A-Z][a-zA-Z0-9_\-\.]{2,}\b|\b[a-zA-Z0-9_\-\.]{4,}\b", combined_text)
+        if chunks:
+            combined_text += " " + " ".join(chunks[:2])
+
+        # Extract capitalized entities and significant terms (excluding grammar/stop words)
+        words = re.findall(r"\b[A-Z][a-zA-Z0-9_\-]{2,}\b", combined_text)
         stopwords = {
             "what", "when", "where", "which", "with", "from", "that", "this", "these",
             "those", "have", "been", "were", "about", "could", "would", "should",
             "there", "their", "under", "after", "before", "page", "pages", "document",
-            "based", "provided", "context", "excerpts", "answer", "question"
+            "based", "provided", "context", "excerpts", "answer", "question", "stated",
+            "state", "according", "specific", "mentioned", "details", "information",
+            "organization", "published", "edition", "also", "into", "more", "who", "whom",
+            "whose", "why", "how", "does", "did", "can", "could", "will", "would", "shall",
+            "are", "was", "has", "had", "tell", "give", "show", "list", "name", "find"
         }
-        candidates = [w for w in words if w.lower() not in stopwords]
+        entities = []
+        for w in words:
+            clean = w.strip()
+            if clean.lower() not in stopwords and len(clean) > 2:
+                if clean not in entities and clean.lower() not in [e.lower() for e in entities]:
+                    entities.append(clean)
+                if len(entities) >= 3:
+                    break
 
-        # Deduplicate while preserving order
-        unique_entities = []
-        for c in candidates:
-            if c.lower() not in [u.lower() for u in unique_entities]:
-                unique_entities.append(c)
-
-        base_name = re.sub(r"\.[a-zA-Z0-9]+$", "", filename)
         questions = []
-
-        if len(unique_entities) >= 2:
-            e1 = unique_entities[0]
-            e2 = unique_entities[1]
-            questions.append(f"How is {e1} specifically implemented or utilized in {base_name}?")
-            questions.append(f"What is the relationship or workflow between {e1} and {e2}?")
-            questions.append(f"What are the main results, metrics, or challenges related to {e1}?")
-        elif len(unique_entities) == 1:
-            e1 = unique_entities[0]
-            questions.append(f"Can you provide more specific details about {e1} mentioned in {base_name}?")
-            questions.append(f"What advantages, configurations, or parameters are outlined for {e1}?")
-            questions.append(f"What are the subsequent steps or conclusions involving {e1}?")
+        if len(entities) >= 2:
+            questions.append(f"What additional details about {entities[0]} are mentioned in {base_name}?")
+            questions.append(f"How does {entities[0]} relate to {entities[1]} in the document?")
+            questions.append(f"What further context or next steps regarding this topic are covered in {base_name}?")
+        elif len(entities) == 1:
+            questions.append(f"Can you provide more specific details about {entities[0]} in {base_name}?")
+            questions.append(f"What background or significance does {entities[0]} hold in this text?")
+            questions.append(f"What other findings or sections in {base_name} relate to this?")
         else:
-            questions.append(f"What are the key technical details and methodology described in {base_name}?")
-            questions.append(f"What specific conclusions or outcomes are highlighted in the document?")
-            questions.append(f"What next steps or recommendations are proposed in {base_name}?")
+            questions.append(f"Can you provide more detailed context about this point from {base_name}?")
+            questions.append(f"What related findings or explanations are provided in {base_name}?")
+            questions.append(f"What are the subsequent conclusions or outcomes discussed in {base_name}?")
 
         return questions[:3]
 

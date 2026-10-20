@@ -47,3 +47,22 @@ class UploadResponse(BaseModel):
     filename: str
     chunks: int
     suggested_questions: Optional[List[str]] = None
+
+class SignupRequest(BaseModel):
+    name: str = Field(..., description="User's full name")
+    email: str = Field(..., description="User's email address")
+    password: str = Field(..., min_length=8, description="User's password (min 8 chars)")
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., description="User's email address")
+    password: str = Field(..., description="User's password")
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    created_at: Optional[str] = None
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserResponse

@@ -34,6 +34,26 @@ def run_all_tests():
     assert health_data["status"] == "healthy"
     print(f"[PASS] /api/health ({time.time() - t0:.3f}s) - Status: {health_data['status']}, Docs: {health_data['documents_count']}")
 
+    # Authenticate for subsequent protected routes
+    auth_email = f"suite_runner_{int(time.time())}@example.com"
+    signup_res = client.post("/api/auth/signup", json={
+        "name": "Suite Runner",
+        "email": auth_email,
+        "password": "Password123!"
+    })
+    assert signup_res.status_code == 200, f"Signup failed: {signup_res.text}"
+    token = signup_res.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    client.headers.update(headers)
+
+    # Upload test document for Suite Runner
+    sample_content = b"Cloud Security Overview: Key best practices include MFA, least privilege access, encryption at rest and in transit, and continuous monitoring."
+    upload_res = client.post(
+        "/api/upload",
+        files={"file": ("cloud_security_test.txt", sample_content, "text/plain")}
+    )
+    assert upload_res.status_code == 200, f"Upload failed: {upload_res.text}"
+
     # 2. List documents
     t0 = time.time()
     res = client.get("/api/documents")

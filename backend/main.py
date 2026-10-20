@@ -34,6 +34,7 @@ from pages import (
     chat_router,
     upload_router,
     health_router,
+    auth_router,
     vector_store,
     llm_service,
     chat_history,
@@ -51,6 +52,25 @@ app = FastAPI(
     description="Full-stack Document Question-Answering and Summarization system powered by FastAPI, PyMuPDF, ChromaDB, and React.",
     version="1.0.0"
 )
+
+# Initialize Background Scheduler for Daily Automatic Chat Cleanup
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    scheduler = BackgroundScheduler(daemon=True)
+    def run_scheduled_cleanup():
+        try:
+            retention_days = int(os.getenv("CHAT_RETENTION_DAYS", "30"))
+            purged = chat_history.cleanup_old_chats(retention_days=retention_days)
+            print(f"[Scheduler] Scheduled chat cleanup: purged {purged} old sessions (retention: {retention_days} days).")
+        except Exception as se:
+            print(f"[Scheduler] Notice during chat cleanup: {se}")
+
+    scheduler.add_job(run_scheduled_cleanup, 'interval', hours=24)
+    scheduler.start()
+    # Trigger initial cleanup run asynchronously
+    run_scheduled_cleanup()
+except Exception as sched_err:
+    print(f"[Scheduler] Notice initializing APScheduler: {sched_err}")
 
 # CORS Configuration
 cors_origins_env = os.getenv("CORS_ORIGIN", "http://localhost:5173")
@@ -76,6 +96,7 @@ print(f"[startup] Documents in registry: {len(vector_store.list_documents())}")
 print(f"[startup] Gemini API key configured: {bool(llm_service.gemini_api_key)}")
 
 # ROUTE ALL PAGES AND COMPONENTS FROM MAIN.PY
+app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(upload_router)
 app.include_router(documents_router)

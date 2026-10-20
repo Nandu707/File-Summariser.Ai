@@ -65,6 +65,26 @@ class VectorStoreService:
         self._sync_backend_db_if_needed(backend_vdb)
         self._cleanup_orphaned_files()
 
+    def get_user_files_dir(self, user_id: Optional[str] = None) -> Path:
+        """Returns isolated per-user directory for raw documents and page caches."""
+        if not user_id:
+            return self.files_dir
+        clean_uid = re.sub(r"[^a-zA-Z0-9_\-]", "_", str(user_id).strip())
+        user_dir = self.files_dir / clean_uid
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return user_dir
+
+    def get_user_collection(self, user_id: Optional[str] = None):
+        """Returns isolated per-user ChromaDB collection."""
+        if not user_id:
+            return self.collection
+        clean_uid = re.sub(r"[^a-zA-Z0-9_]", "_", str(user_id).strip())
+        col_name = f"user_{clean_uid}"
+        return self.client.get_or_create_collection(
+            name=col_name,
+            metadata={"user_id": str(user_id), "description": f"Private chunks for user {user_id}"}
+        )
+
     def _sync_backend_db_if_needed(self, backend_vdb: Path):
         """Merges any chunks or documents from legacy backend/vector_db into canonical vector_db."""
         if not backend_vdb.exists() or backend_vdb.resolve() == self.persist_dir.resolve():
@@ -214,9 +234,12 @@ class VectorStoreService:
         except Exception as e:
             print(f"[VectorStore] Error saving document registry: {e}")
 
-    def list_documents(self) -> List[Dict[str, Any]]:
+    def list_documents(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         reg = self._get_registry()
-        docs = list(reg.values())
+        if user_id:
+            docs = [d for d in reg.values() if d.get("user_id") == str(user_id)]
+        else:
+            docs = list(reg.values())
         docs.sort(key=lambda x: x.get("uploaded_at", ""), reverse=True)
         return docs
 
@@ -240,13 +263,14 @@ class VectorStoreService:
         except Exception as e:
             print(f"[VectorStore] Notice cleaning orphaned files: {e}")
 
-    def delete_document(self, doc_id: str) -> bool:
+    def delete_document(self, doc_id: str, user_id: Optional[str] = None) -> bool:
         """
         Thoroughly deletes an indexed document from:
         1. All ChromaDB vector collections (by metadata doc_id, filename, and ID prefix)
         2. Local disk file storage & page JSON caches
         3. Document registry JSON
         4. Memory question & prompt caches
+        Enforces user ownership check.
         """
         try:
             reg = self._get_registry()
@@ -259,6 +283,13 @@ class VectorStoreService:
                         target_id = did
                         target_doc = info
                         break
+
+            if not target_doc:
+                return False
+
+            # Ownership check: deny deletion if owned by another user
+            if user_id and target_doc.get("user_id") and target_doc.get("user_id") != str(user_id):
+                return False
 
             filename = target_doc.get("filename") if target_doc else None
 
@@ -304,19 +335,26 @@ class VectorStoreService:
 
             # 2. Delete local raw document file and page json files
             try:
-                if self.files_dir.exists():
-                    for f in list(self.files_dir.glob(f"{target_id}_*")):
-                        try:
-                            f.unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                    if filename:
-                        target_raw = self.files_dir / f"{target_id}_{filename}"
-                        if target_raw.exists():
+                dirs_to_clean = [self.files_dir]
+                if user_id:
+                    dirs_to_clean.append(self.get_user_files_dir(user_id))
+                elif target_doc.get("user_id"):
+                    dirs_to_clean.append(self.get_user_files_dir(target_doc["user_id"]))
+
+                for udir in dirs_to_clean:
+                    if udir.exists():
+                        for f in list(udir.glob(f"{target_id}_*")):
                             try:
-                                target_raw.unlink(missing_ok=True)
+                                f.unlink(missing_ok=True)
                             except Exception:
                                 pass
+                        if filename:
+                            target_raw = udir / f"{target_id}_{filename}"
+                            if target_raw.exists():
+                                try:
+                                    target_raw.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
             except Exception as fe:
                 print(f"[VectorStore] Notice deleting local file cache: {fe}")
 
@@ -486,12 +524,19 @@ class VectorStoreService:
 
         return pages_data
 
-    def index_document(self, filename: str, content: Union[bytes, str], llm_service=None, firebase_service=None) -> Dict[str, Any]:
+    def index_document(
+        self,
+        filename: str,
+        content: Union[bytes, str],
+        llm_service=None,
+        firebase_service=None,
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Extracts text, splits using RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200),
-        generates embeddings and stores in persistent ChromaDB client with doc_id and page metadata.
-        Optimized for large files with batched insertions.
-        Returns: { "doc_id": str, "filename": str, "chunks": int, "suggested_questions": list[str] }
+        generates embeddings and stores in user-isolated ChromaDB collection with doc_id and page metadata.
+        Stores raw files in dedicated per-user directory: files/<user_id>/.
+        Returns: { "doc_id": str, "filename": str, "chunks": int, "suggested_questions": list[str], "user_id": str }
         """
         doc_id = str(uuid.uuid4())
         pages = self.extract_text_with_page_metadata(filename, content)
@@ -525,7 +570,8 @@ class VectorStoreService:
                     "doc_id": doc_id,
                     "page": page_num,
                     "filename": filename,
-                    "chunk_index": chunk_counter
+                    "chunk_index": chunk_counter,
+                    "user_id": str(user_id) if user_id else ""
                 })
                 chunk_counter += 1
 
@@ -538,14 +584,16 @@ class VectorStoreService:
                     "doc_id": doc_id,
                     "page": int(p["page"]),
                     "filename": filename,
-                    "chunk_index": chunk_counter
+                    "chunk_index": chunk_counter,
+                    "user_id": str(user_id) if user_id else ""
                 })
                 chunk_counter += 1
 
-        # Store in persistent ChromaDB collection in safe batches of 200 for fast memory & CPU efficiency
+        # Store in user-isolated ChromaDB collection in safe batches of 200
+        target_coll = self.get_user_collection(user_id)
         batch_size = 200
         for i in range(0, len(ids), batch_size):
-            self.collection.add(
+            target_coll.add(
                 ids=ids[i:i + batch_size],
                 documents=documents[i:i + batch_size],
                 metadatas=metadatas[i:i + batch_size]
@@ -560,7 +608,7 @@ class VectorStoreService:
             except Exception as e:
                 print(f"[VectorStore] Notice generating suggested questions: {e}")
 
-        # Update local registry
+        # Update local registry with user_id
         from datetime import datetime
         reg = self._get_registry()
         reg[doc_id] = {
@@ -569,20 +617,22 @@ class VectorStoreService:
             "chunks": len(documents),
             "pages_count": len(pages),
             "uploaded_at": datetime.utcnow().isoformat(),
-            "suggested_questions": suggested_questions
+            "suggested_questions": suggested_questions,
+            "user_id": str(user_id) if user_id else None
         }
         self._save_registry(reg)
         self._all_docs_questions_cache = None
         self._all_docs_questions_cache_key = None
 
-        # Cache raw file and page structures locally for instant page viewing
+        # Cache raw file and page structures in dedicated per-user directory
+        user_dir = self.get_user_files_dir(user_id)
         try:
             content_bytes = content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8")
-            file_save_path = self.files_dir / f"{doc_id}_{filename}"
+            file_save_path = user_dir / f"{doc_id}_{filename}"
             with open(file_save_path, "wb") as f:
                 f.write(content_bytes)
 
-            pages_save_path = self.files_dir / f"{doc_id}_pages.json"
+            pages_save_path = user_dir / f"{doc_id}_pages.json"
             with open(pages_save_path, "w", encoding="utf-8") as f:
                 json.dump(pages, f, ensure_ascii=False, indent=2)
         except Exception as f_err:
@@ -613,13 +663,16 @@ class VectorStoreService:
             "suggested_questions": suggested_questions
         }
 
-    def get_suggested_questions(self, doc_id: str, llm_service=None) -> List[str]:
+    def get_suggested_questions(self, doc_id: str, llm_service=None, user_id: Optional[str] = None) -> List[str]:
         """
-        Retrieves or dynamically generates 3-5 variable suggested questions suitable for this document or all documents.
-        When doc_id is 'all' (main page), it reads across all uploaded files to generate relevant questions for each file.
+        Retrieves or dynamically generates suggested questions suitable for this document or all documents for user_id.
         """
         is_all = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
         reg = self._get_registry()
+        if user_id:
+            reg = {k: v for k, v in reg.items() if v.get("user_id") == str(user_id)}
+
+        active_coll = self.get_user_collection(user_id)
 
         if is_all:
             if not reg:
@@ -629,26 +682,26 @@ class VectorStoreService:
                 ]
 
             # Invalidate/check multi-document suggestions cache
-            current_cache_key = tuple(sorted(reg.keys()))
+            current_cache_key = (str(user_id), tuple(sorted(reg.keys())))
             if getattr(self, "_all_docs_questions_cache_key", None) == current_cache_key:
                 cached_questions = getattr(self, "_all_docs_questions_cache", None)
                 if cached_questions and len(cached_questions) >= 2:
                     return cached_questions
 
-            # Read excerpts across ALL uploaded files
+            # Read excerpts across ALL uploaded files for this user
             all_files_data = []
             for d_id, doc_info in reg.items():
                 fn = doc_info.get("filename", "document")
                 chunks = []
                 try:
-                    res = self.collection.get(where={"doc_id": d_id}, limit=2)
+                    res = active_coll.get(where={"doc_id": d_id}, limit=2)
                     if res and res.get("documents"):
                         chunks = res["documents"]
                 except Exception:
                     pass
 
                 if not chunks:
-                    pages = self.get_all_pages_for_document(d_id)
+                    pages = self.get_all_pages_for_document(d_id, user_id=user_id)
                     if pages:
                         chunks = [p["text"][:600] for p in pages[:2]]
 
@@ -666,14 +719,12 @@ class VectorStoreService:
                     print(f"[VectorStore] Error generating multi-document questions: {e}")
 
             if not questions:
-                # Heuristic fallback across all files
                 for d in all_files_data:
                     base_fn = re.sub(r"\.[a-zA-Z0-9]+$", "", d["filename"])
                     questions.append(f"What key information or problems are covered in {base_fn}?")
                 if len(all_files_data) > 1:
                     questions.append("What are the primary findings and common themes across all uploaded files?")
 
-            # Cache the generated questions
             self._all_docs_questions_cache_key = current_cache_key
             self._all_docs_questions_cache = questions[:6]
             return self._all_docs_questions_cache
@@ -684,15 +735,20 @@ class VectorStoreService:
                 return doc["suggested_questions"]
 
             filename = doc.get("filename", "document") if doc else "document"
-            
-            # Retrieve sample chunks from collection for this document
+
+            # Retrieve sample chunks from user collection for this document
             sample_chunks = []
             try:
-                res = self.collection.get(where={"doc_id": doc_id}, limit=3)
+                res = active_coll.get(where={"doc_id": doc_id}, limit=3)
                 if res and res.get("documents"):
                     sample_chunks = res["documents"]
             except Exception as e:
                 print(f"[VectorStore] Notice getting chunks for suggestions: {e}")
+
+            if not sample_chunks:
+                pages = self.get_all_pages_for_document(doc_id, user_id=user_id)
+                if pages:
+                    sample_chunks = [p["text"][:600] for p in pages[:3]]
 
             questions = []
             if llm_service is not None:
@@ -708,7 +764,6 @@ class VectorStoreService:
                     "What are the primary conclusions or next steps?"
                 ]
 
-            # Cache in registry if document exists
             if doc:
                 doc["suggested_questions"] = questions
                 reg[doc_id] = doc
@@ -716,12 +771,16 @@ class VectorStoreService:
 
             return questions
 
-    def get_all_pages_for_document(self, doc_id: str) -> List[Dict[str, Any]]:
+    def get_all_pages_for_document(self, doc_id: str, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Returns full text for every page of the document: [{'page': 1, 'text': '...'}, ...]
-        Uses local cache file if available, or reconstructs ordered page text from ChromaDB chunks.
+        Uses local user cache file if available, or reconstructs from user collection.
         """
-        pages_json = self.files_dir / f"{doc_id}_pages.json"
+        user_dir = self.get_user_files_dir(user_id)
+        pages_json = user_dir / f"{doc_id}_pages.json"
+        if not pages_json.exists():
+            pages_json = self.files_dir / f"{doc_id}_pages.json"
+
         if pages_json.exists():
             try:
                 with open(pages_json, "r", encoding="utf-8") as f:
@@ -731,7 +790,10 @@ class VectorStoreService:
             except Exception:
                 pass
 
-        matching = self.collection.get(where={"doc_id": doc_id})
+        active_coll = self.get_user_collection(user_id)
+        matching = active_coll.get(where={"doc_id": doc_id})
+        if not matching or not matching.get("documents"):
+            matching = self.collection.get(where={"doc_id": doc_id})
         if not matching or not matching.get("documents"):
             try:
                 col_names = [c.name for c in self.client.list_collections()]
@@ -767,18 +829,19 @@ class VectorStoreService:
 
         return sorted_pages
 
-    def _reconstruct_document_file(self, doc_id: str, doc_info: Dict[str, Any]) -> Optional[Path]:
+    def _reconstruct_document_file(self, doc_id: str, doc_info: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Path]:
         """
         For pre-existing documents indexed without raw file on disk,
         synthesizes a clean viewable document (PDF for .pdf, text for .txt/.docx).
         """
         filename = doc_info.get("filename", f"{doc_id}.pdf")
         ext = filename.lower().split(".")[-1]
-        target_path = self.files_dir / f"{doc_id}_{filename}"
+        user_dir = self.get_user_files_dir(user_id)
+        target_path = user_dir / f"{doc_id}_{filename}"
         if target_path.exists():
             return target_path
 
-        pages_data = self.get_all_pages_for_document(doc_id)
+        pages_data = self.get_all_pages_for_document(doc_id, user_id=user_id)
         if not pages_data:
             return None
 
@@ -819,41 +882,71 @@ class VectorStoreService:
             print(f"[VectorStore] Error reconstructing document file: {e}")
             return None
 
-    def get_document_file_path(self, doc_id: str) -> Optional[Path]:
+    def get_document_file_path(self, doc_id: str, user_id: Optional[str] = None) -> Optional[Path]:
         """
         Returns the absolute Path of the stored file, or reconstructs it if needed.
+        Restricted to the user who owns the document.
         """
         reg = self._get_registry()
-        doc_info = reg.get(doc_id, {})
+        doc_info = reg.get(doc_id)
+        if not doc_info:
+            return None
+
+        # Verify ownership if user_id is provided and doc has user_id
+        if user_id and doc_info.get("user_id") and str(doc_info.get("user_id")) != str(user_id):
+            return None
+
         filename = doc_info.get("filename")
+        effective_uid = user_id or doc_info.get("user_id")
+        user_dir = self.get_user_files_dir(effective_uid)
 
         if filename:
-            p = self.files_dir / f"{doc_id}_{filename}"
+            p = user_dir / f"{doc_id}_{filename}"
             if p.exists():
                 return p
+            p_global = self.files_dir / f"{doc_id}_{filename}"
+            if p_global.exists():
+                return p_global
+
+        for f in user_dir.glob(f"{doc_id}_*"):
+            if not f.name.endswith("_pages.json"):
+                return f
 
         for f in self.files_dir.glob(f"{doc_id}_*"):
             if not f.name.endswith("_pages.json"):
                 return f
 
-        return self._reconstruct_document_file(doc_id, doc_info)
+        return self._reconstruct_document_file(doc_id, doc_info, user_id=effective_uid)
 
-    def get_document_page(self, doc_id: str, page_num: int) -> Dict[str, Any]:
+    def get_document_page(self, doc_id: str, page_num: int, user_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Retrieves page details: total pages, page text content, file metadata, and view link.
+        Strictly isolated by user_id.
         """
         reg = self._get_registry()
         doc_info = reg.get(doc_id, {})
+        if user_id and doc_info.get("user_id") and str(doc_info.get("user_id")) != str(user_id):
+            return {
+                "doc_id": doc_id,
+                "filename": "Access Denied",
+                "page": page_num,
+                "total_pages": 0,
+                "content": "",
+                "file_type": "unknown",
+                "has_raw_file": False,
+                "file_url": ""
+            }
+
         filename = doc_info.get("filename", "document")
         ext = filename.lower().split(".")[-1]
 
-        all_pages = self.get_all_pages_for_document(doc_id)
+        all_pages = self.get_all_pages_for_document(doc_id, user_id=user_id)
         total_pages = doc_info.get("pages_count") or (len(all_pages) if all_pages else 1)
 
         target_page = next((p for p in all_pages if p["page"] == page_num), None)
         content = target_page["text"] if target_page else ""
 
-        file_path = self.get_document_file_path(doc_id)
+        file_path = self.get_document_file_path(doc_id, user_id=user_id)
         has_raw = file_path is not None and file_path.exists()
 
         pdf_url = f"http://localhost:8000/api/documents/{doc_id}/file#page={page_num}"
@@ -923,33 +1016,49 @@ class VectorStoreService:
 
         return score
 
-    def retrieve_top_chunks(self, doc_id: Optional[str], question: str, n_results: int = 4) -> Tuple[List[str], List[Dict[str, Any]], List[int]]:
+    def retrieve_top_chunks(self, doc_id: Optional[str], question: str, n_results: int = 4, user_id: Optional[str] = None) -> Tuple[List[str], List[Dict[str, Any]], List[int]]:
         """
         High-Accuracy Hybrid Retrieval:
-        1. Dynamically searches across all uploaded files or a specific document.
-        2. When searching all documents (is_all_docs=True):
-           - Gathers candidates both globally and on a per-document basis from every registered document
-             so newly uploaded files are NEVER crowded out by older large files.
+        1. Dynamically searches across all uploaded files or a specific document for the specific user_id.
+        2. Isolated to user's dedicated ChromaDB collection (user_<user_id>).
+        3. When searching all documents (is_all_docs=True):
+           - Gathers candidates both globally and on a per-document basis from every registered document owned by the user.
            - Matches document filename mentions and recency intents.
            - Applies Reciprocal Rank Fusion (RRF) and lexical BM25-style scoring.
            - Ensures balanced multi-document representation for complete, holistic answers.
-        3. Suppresses near-duplicate chunks for diverse context.
-        4. Returns top chunks with complete page and filename metadata.
+        4. Suppresses near-duplicate chunks for diverse context.
+        5. Returns top chunks with complete page and filename metadata.
         """
         is_all_docs = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
         reg = self._get_registry()
 
-        total_chunks = self.collection.count()
+        # Scope registry strictly to the user's documents
+        if user_id:
+            reg = {k: v for k, v in reg.items() if str(v.get("user_id")) == str(user_id)}
+
+        # If a single doc_id is requested, verify it exists in user's registry
+        if not is_all_docs and doc_id:
+            if user_id and doc_id not in reg:
+                # User does not own this document
+                return [], [], []
+
+        active_collection = self.get_user_collection(user_id)
+        total_chunks = active_collection.count()
         if total_chunks == 0:
-            return [], [], []
+            if not user_id:
+                active_collection = self.collection
+                total_chunks = active_collection.count()
+            if total_chunks == 0:
+                return [], [], []
 
         cand_pool: Dict[Tuple[str, int], Dict[str, Any]] = {}
 
         # Pre-compute query embedding ONCE so ChromaDB doesn't re-embed the question 9+ times
         query_emb = None
         try:
-            if hasattr(self.collection, "_embedding_function") and self.collection._embedding_function:
-                embs = self.collection._embedding_function([question])
+            emb_fn = getattr(active_collection, "_embedding_function", None) or getattr(self.collection, "_embedding_function", None)
+            if emb_fn:
+                embs = emb_fn([question])
                 if embs and len(embs) > 0:
                     query_emb = embs[0]
         except Exception:
@@ -959,10 +1068,10 @@ class VectorStoreService:
 
         if is_all_docs and len(reg) > 1:
             # --- MULTI-DOCUMENT BALANCED RETRIEVAL ---
-            # 1. Global ANN Search across entire collection
+            # 1. Global ANN Search across user's collection
             global_k = min(32, total_chunks)
             try:
-                g_res = self.collection.query(**base_query_args, n_results=global_k)
+                g_res = active_collection.query(**base_query_args, n_results=global_k)
                 g_docs = g_res.get("documents", [[]])[0]
                 g_metas = g_res.get("metadatas", [[]])[0]
                 g_dists = g_res.get("distances", [[]])[0] if "distances" in g_res and g_res["distances"] else []
@@ -987,7 +1096,7 @@ class VectorStoreService:
                 doc_chunk_cnt = d_info.get("chunks", 6)
                 doc_k = min(6, doc_chunk_cnt) if doc_chunk_cnt > 0 else 6
                 try:
-                    d_res = self.collection.query(
+                    d_res = active_collection.query(
                         **base_query_args,
                         n_results=doc_k,
                         where={"doc_id": d_id}
@@ -1012,7 +1121,7 @@ class VectorStoreService:
                 except Exception as de:
                     # Direct fetch fallback if query had issue
                     try:
-                        fb = self.collection.get(where={"doc_id": d_id}, limit=doc_k)
+                        fb = active_collection.get(where={"doc_id": d_id}, limit=doc_k)
                         if fb and fb.get("documents"):
                             for r_idx, (c, m) in enumerate(zip(fb["documents"], fb.get("metadatas", []))):
                                 c_idx = int(m.get("chunk_index", r_idx))
@@ -1037,13 +1146,15 @@ class VectorStoreService:
                 if not is_all_docs:
                     query_kwargs["where"] = {"doc_id": doc_id}
 
-                query_res = self.collection.query(**query_kwargs)
+                query_res = active_collection.query(**query_kwargs)
                 q_docs = query_res.get("documents", [[]])[0]
                 q_metas = query_res.get("metadatas", [[]])[0]
                 q_dists = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
 
                 for r_idx, (c, m) in enumerate(zip(q_docs, q_metas)):
                     d_id = m.get("doc_id", "")
+                    if reg and d_id not in reg:
+                        continue
                     c_idx = int(m.get("chunk_index", r_idx))
                     k = (d_id, c_idx)
                     dist = q_dists[r_idx] if r_idx < len(q_dists) else 1.0
@@ -1059,7 +1170,7 @@ class VectorStoreService:
             # Fallback if specific document returned empty
             if not cand_pool and not is_all_docs:
                 try:
-                    fb = self.collection.get(where={"doc_id": doc_id}, limit=candidate_k)
+                    fb = active_collection.get(where={"doc_id": doc_id}, limit=candidate_k)
                     if fb and fb.get("documents"):
                         for r_idx, (c, m) in enumerate(zip(fb["documents"], fb.get("metadatas", []))):
                             c_idx = int(m.get("chunk_index", r_idx))

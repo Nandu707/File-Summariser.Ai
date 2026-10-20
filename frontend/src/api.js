@@ -1,7 +1,20 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+function getAuthHeaders(extraHeaders = {}) {
+  const headers = { ...extraHeaders };
+  try {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {}
+  return headers;
+}
+
 export async function checkHealth() {
-  const res = await fetch(`${API_BASE_URL}/api/health`);
+  const res = await fetch(`${API_BASE_URL}/api/health`, {
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error(`Health check failed: ${res.statusText}`);
   return res.json();
 }
@@ -12,6 +25,8 @@ export async function uploadDocument(file) {
 
   const res = await fetch(`${API_BASE_URL}/api/upload`, {
     method: 'POST',
+    headers: getAuthHeaders(),
+    credentials: 'include',
     body: formData,
   });
 
@@ -20,18 +35,19 @@ export async function uploadDocument(file) {
     throw new Error(errorData.detail || 'Upload failed');
   }
 
-  // Contract: { doc_id: str, filename: str, chunks: int }
   return res.json();
 }
 
-export async function askQuestion(docId, question) {
+export async function askQuestion(docId, question, chatId = null) {
   const res = await fetch(`${API_BASE_URL}/api/ask`, {
     method: 'POST',
-    headers: {
+    headers: getAuthHeaders({
       'Content-Type': 'application/json',
-    },
+    }),
+    credentials: 'include',
     body: JSON.stringify({
       doc_id: docId,
+      chat_id: chatId,
       question: question,
     }),
   });
@@ -41,12 +57,14 @@ export async function askQuestion(docId, question) {
     throw new Error(errorData.detail || 'Query failed');
   }
 
-  // Contract: { answer: str, sources: list[int] }
   return res.json();
 }
 
 export async function getDocuments() {
-  const res = await fetch(`${API_BASE_URL}/api/documents`);
+  const res = await fetch(`${API_BASE_URL}/api/documents`, {
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error('Failed to fetch documents');
   return res.json();
 }
@@ -54,13 +72,18 @@ export async function getDocuments() {
 export async function deleteDocument(docId) {
   const res = await fetch(`${API_BASE_URL}/api/documents/${docId}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
+    credentials: 'include',
   });
   if (!res.ok) throw new Error('Failed to delete document');
   return res.json();
 }
 
 export async function getSuggestedQuestions(docId) {
-  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/suggested-questions`);
+  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/suggested-questions`, {
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error('Failed to fetch suggested questions');
   return res.json();
 }
@@ -68,9 +91,10 @@ export async function getSuggestedQuestions(docId) {
 export async function getSequentialQuestions(docId, question, answer = '') {
   const res = await fetch(`${API_BASE_URL}/api/sequential-questions`, {
     method: 'POST',
-    headers: {
+    headers: getAuthHeaders({
       'Content-Type': 'application/json',
-    },
+    }),
+    credentials: 'include',
     body: JSON.stringify({
       doc_id: docId,
       question: question,
@@ -81,9 +105,11 @@ export async function getSequentialQuestions(docId, question, answer = '') {
   return res.json();
 }
 
-
 export async function getDocumentChat(docId) {
-  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/chat`);
+  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/chat`, {
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error('Failed to fetch chat history');
   return res.json();
 }
@@ -91,13 +117,18 @@ export async function getDocumentChat(docId) {
 export async function clearDocumentChat(docId) {
   const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/chat`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
+    credentials: 'include',
   });
   if (!res.ok) throw new Error('Failed to clear chat history');
   return res.json();
 }
 
 export async function getDocumentPage(docId, pageNum) {
-  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/pages/${pageNum}`);
+  const res = await fetch(`${API_BASE_URL}/api/documents/${docId}/pages/${pageNum}`, {
+    headers: getAuthHeaders(),
+    credentials: 'include',
+  });
   if (!res.ok) throw new Error(`Failed to load page ${pageNum}`);
   return res.json();
 }
@@ -105,4 +136,17 @@ export async function getDocumentPage(docId, pageNum) {
 export function getDocumentFileUrl(docId, pageNum = null) {
   const base = `${API_BASE_URL}/api/documents/${docId}/file`;
   return pageNum ? `${base}#page=${pageNum}` : base;
+}
+
+export async function runManualChatCleanup(retentionDays = 30) {
+  const res = await fetch(`${API_BASE_URL}/api/auth/run-cleanup`, {
+    method: 'POST',
+    headers: getAuthHeaders({
+      'Content-Type': 'application/json',
+    }),
+    credentials: 'include',
+    body: JSON.stringify({ retention_days: retentionDays }),
+  });
+  if (!res.ok) throw new Error('Failed to run chat cleanup');
+  return res.json();
 }
