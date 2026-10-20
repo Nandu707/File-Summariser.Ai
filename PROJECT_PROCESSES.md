@@ -118,25 +118,37 @@ graph TD
 
 ## 3. Dynamic Suggested Questions Generation Lifecycle
 
-Instead of static, generic questions, the system dynamically analyzes the document to produce relevant prompts:
+## 3. Dynamic Suggested Question Generation & Multi-Document Synthesis
+
+Instead of static, generic questions, the system dynamically analyzes the document corpus to produce relevant prompts tailored to single documents or across all uploaded files:
 
 ```mermaid
-graph LR
-    A[Extracted Chunks] --> B[Sample Initial & Summary Chunks]
-    B --> C{LLM Available?}
-    C -->|Gemini / OpenAI Active| D[Few-Shot Prompt: Generate 3-4 specific domain questions]
-    C -->|Offline / API Key Missing| E[Heuristic Domain Analyzer: Technical / Resume / Report / Project]
-    D --> F[Parse Clean Questions Array]
-    E --> F
-    F --> G[Save to documents_registry.json under doc_id]
-    G --> H[Expose via GET /api/documents/doc_id/suggested-questions]
+graph TD
+    A[Question Request: GET /api/documents/{doc_id}/suggested-questions] --> B{doc_id == 'all'?}
+    
+    B -->|Yes: Main Page| C[Inspect Full Registry: list all uploaded files]
+    C --> D[Extract Representative Chunks from EACH Document]
+    D --> E[Combine Excerpts: Document 1, 2, ... N]
+    E --> F[Prompt LLM: Generate 4-6 specific questions spanning all files + cross-file comparison]
+    F --> G[Cache in Memory Keyed by Uploaded File Set]
+    G --> H[Return JSON Array to Frontend: Instant 0ms on revisit]
+
+    B -->|No: Specific File| I{Cached in documents_registry.json?}
+    I -->|Yes| J[Return Cached Questions Instantly]
+    I -->|No| K[Sample Chunks from Selected Document]
+    K --> L[LLM / Heuristic Single-Doc Analyzer]
+    L --> M[Save to documents_registry.json under doc_id]
+    M --> N[Return Questions Array to Frontend]
 ```
 
-- **Domain-Tailored Output Examples**:
+- **Single Document Tailored Output**:
   - *Resumes*: Questions regarding candidate experience, tech stack, certifications, and educational degrees.
   - *Academic / Research Papers*: Questions on algorithm complexity, methodology, benchmark results, and evaluation datasets.
   - *Project Reports*: Questions on problem statement, system architecture, team contributors, and conclusion.
-- **Caching**: Generated questions are stored in `documents_registry.json` so subsequent file selections retrieve suggestions instantly without re-querying the LLM.
+- **Multi-Document Main Page Synthesis (`doc_id="all"`)**:
+  - Automatically aggregates excerpts from every document currently in the registry (`project_report_full.pdf`, `ZOHO LONG PROGRAMMING QUESTIONS.docx`, `c questions.docx`, etc.).
+  - Prompts the LLM with combined multi-file context to generate questions that distinctly cover the different uploaded files as well as comparative questions connecting multiple files.
+  - **Zero-Latency Invalidation**: The multi-document questions are cached in memory keyed by the set of active document IDs; whenever a file is uploaded or deleted, the cache automatically invalidates and refreshes.
 
 ---
 

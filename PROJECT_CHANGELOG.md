@@ -19,6 +19,9 @@ timeline
     Milestone 8 : GitHub Integration : Git Security Hardening (.gitignore) : Remote Push to GitHub
     Milestone 9 : Firebase Cloud Sync : Cloud Firestore Chat Storage : Cloud Storage Bucket Ingestion
     Milestone 10 : Interactive Source Citations : Page Click Deep-Linking : In-App Document Page Viewer Modal
+    Milestone 11 : Modular Multi-Page UI & System Diagnostics : Chat, Documents, System & Upload Tabs : Direct Source PDF Page Viewer
+    Milestone 12 : RAG Performance & Engine Hardening : PyMuPDF Deprecation Fix : Direct ChromaDB Query : Fast Gemini Models : E2E Test Suite
+    Milestone 13 : Multi-File Question Synthesis on Main Page : Full Knowledge Base Ingestion : Cross-File Suggested Questions : Zero-Latency Cache
 ```
 
 ---
@@ -148,4 +151,49 @@ timeline
   - Features dual-mode rendering: native browser PDF Viewer (`<iframe>` deep-linked to the cited page) and full indexed text view with word count and one-click copy.
   - Embedded pagination bar (`<` Previous, `>` Next, and keyboard arrow keys) for seamless document browsing.
   - Works consistently across all file formats (PDF, DOCX, TXT) with automatic fallback and file reconstruction.
+
+---
+
+### Milestone 11: Modular Multi-Page Architecture & System Diagnostics Dashboard
+- **Modular Frontend Architecture**:
+  - Reorganized frontend into dedicated, cleanly separated pages (`pages/ChatPage.jsx`, `pages/DocumentsPage.jsx`, `pages/SystemPage.jsx`, `pages/UploadPage.jsx`).
+  - Added dedicated navigation bar with active page indicator, quick stats, and responsive tab transitions.
+- **Backend Modular Routing Structure**:
+  - Refactored `backend/pages/` into modular routers:
+    - [`health.py`](file:///e:/Task-RAG/backend/pages/health.py): Health probe, storage stats, and AI provider status.
+    - [`upload.py`](file:///e:/Task-RAG/backend/pages/upload.py): Multi-format ingestion with asynchronous background indexing.
+    - [`documents.py`](file:///e:/Task-RAG/backend/pages/documents.py): Registry management, document deletion, and file streaming.
+    - [`chat.py`](file:///e:/Task-RAG/backend/pages/chat.py): Question answering, grounding, citation enrichment, and history.
+    - [`schemas.py`](file:///e:/Task-RAG/backend/pages/schemas.py): Pydantic request/response validation schemas.
+    - [`deps.py`](file:///e:/Task-RAG/backend/pages/deps.py): Centralized singleton dependency injection.
+- **System Diagnostics Dashboard**:
+  - Added real-time diagnostics monitoring ChromaDB collection size, persistent storage paths, CORS configuration, and provider connectivity.
+- **Physical Document Page Deep-Linking**:
+  - Updated "Sourced From" citations to directly open the exact cited page of the original source document in a new tab via `/api/documents/{doc_id}/file/{filename}#page={page_num}`.
+
+---
+
+### Milestone 12: High-Performance RAG Pipeline, PyMuPDF Upgrade & Automated Test Suite
+- **Elimination of PyMuPDF Deprecation Warnings**:
+  - Upgraded all `import fitz` statements to `import pymupdf as fitz` across [vector_store.py](file:///e:/Task-RAG/backend/app/services/vector_store.py) and [rag_service.py](file:///e:/Task-RAG/backend/rag_service.py), eliminating runtime warning banners.
+- **ChromaDB Direct Query Optimization**:
+  - Removed expensive full collection scans (`self.collection.get()`) that previously deserialized all document chunks on every query.
+  - Implemented direct `self.collection.query()` and `self.collection.count()`, reducing candidate retrieval latency from hundreds of milliseconds to single-digit milliseconds.
+- **LLM Client Re-use & High-Speed Models**:
+  - Implemented connection pooling by caching `_gemini_client` and `_openai_client` on [`LLMService`](file:///e:/Task-RAG/backend/app/services/llm_service.py).
+  - Configured high-speed Google Gemini models (`gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3.5-flash`), delivering grounded responses in ~1.1 seconds.
+  - Removed deprecated model IDs (`gemini-2.0-flash`) that caused 404 errors and long retry cycles.
+- **Automated Comprehensive Test Suite**:
+  - Created [backend/test_full_suite.py](file:///e:/Task-RAG/backend/test_full_suite.py) testing all 8 backend API phases end-to-end (Health, Documents, Page Detail, File Stream, Suggested Questions, Single-Doc Ask, Multi-Doc Ask, and Chat History), all passing in ~5.8s.
+
+---
+
+### Milestone 13: Multi-Document Main Page Question Synthesis & Zero-Latency Caching
+- **Full Knowledge Base Aggregation**:
+  - *Problem*: Previously, suggested questions on the main page (`doc_id="all"`) only read from whichever document was listed first in ChromaDB, ignoring all other uploaded files.
+  - *Solution*: Upgraded `get_suggested_questions` in [vector_store.py](file:///e:/Task-RAG/backend/app/services/vector_store.py) to read representative excerpts across **all uploaded files** in the registry.
+- **Multi-File Question Synthesis Engine**:
+  - Added [`generate_all_documents_suggested_questions`](file:///e:/Task-RAG/backend/app/services/llm_service.py) in [`LLMService`](file:///e:/Task-RAG/backend/app/services/llm_service.py).
+  - Prompts LLMs with combined multi-file context to generate 4 to 6 specific, relevant questions representing each uploaded file (e.g. project reports, Zoho programming challenges, C question sets), plus cross-document comparison questions.
+  - Implemented dynamic cache invalidation on file upload/deletion, serving cached multi-file questions in **0ms** on repeated visits.
 

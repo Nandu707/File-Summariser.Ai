@@ -45,25 +45,35 @@ Task-RAG/
 ├── backend/                            # FastAPI Backend Service
 │   ├── .env                            # Backend environment variables (API keys, ports)
 │   ├── .env.example                    # Environment variable template
-│   ├── main.py                         # Primary FastAPI application and REST endpoints
-│   ├── rag_service.py                  # Standalone/legacy RAG implementation
+│   ├── main.py                         # Primary FastAPI application and route orchestrator
+│   ├── rag_service.py                  # Standalone RAG implementation
 │   ├── requirements.txt                # Python dependencies (FastAPI, PyMuPDF, python-docx, ChromaDB, etc.)
+│   ├── test_full_suite.py              # Automated 8-phase comprehensive API test suite
 │   ├── test_e2e.py                     # End-to-end integration test suite
 │   ├── test_llm.py                     # LLM synthesis test script
 │   ├── test_retrieve.py                # Retrieval verification script
+│   ├── pages/                          # Modular FastAPI Page Routers & Schemas
+│   │   ├── __init__.py                 # Router exports
+│   │   ├── health.py                   # Health check & system diagnostics endpoint
+│   │   ├── upload.py                   # Document upload & asynchronous indexing
+│   │   ├── documents.py                # Documents registry, file streaming, & page inspection
+│   │   ├── chat.py                     # Chat question-answering, RRF retrieval & grounding
+│   │   ├── schemas.py                  # Pydantic request/response data contracts
+│   │   └── deps.py                     # Singleton dependencies injection (vector_store, llm_service)
 │   ├── app/
 │   │   ├── __init__.py                 # Package marker
 │   │   ├── main.py                     # App wrapper
 │   │   └── services/
 │   │       ├── __init__.py             # Service package marker
 │   │       ├── chat_history_service.py # SQLite persistent storage for chat messages per document
-│   │       ├── llm_service.py          # LLM prompt synthesis, dynamic questions & API caller
+│   │       ├── firebase_service.py     # Optional Firebase Firestore / Cloud Storage sync
+│   │       ├── llm_service.py          # LLM prompt synthesis, multi-file suggestions & API caller
 │   │       └── vector_store.py         # PyMuPDF/python-docx parser, chunker & ChromaDB hybrid RRF store
 │   └── vector_db/                      # Persistent local ChromaDB & SQLite storage (gitignored)
 │       ├── chroma.sqlite3              # ChromaDB metadata and SQLite collections
 │       ├── chat_history.db             # SQLite database storing chat messages per doc_id
 │       ├── documents_registry.json     # Metadata registry of all indexed documents & cached questions
-│       └── [uuid-collections]/         # Binary HNSW vector indices
+│       └── files/                      # Cached raw files & pages structures for instant viewing
 │
 ├── frontend/                           # React + Vite Frontend Application
 │   ├── index.html                      # Single-page HTML shell with Google Fonts
@@ -72,20 +82,22 @@ Task-RAG/
 │   ├── tailwind.config.js              # Tailwind CSS theme & color palette
 │   ├── postcss.config.js               # PostCSS plugin settings
 │   ├── public/                         # Static icons and assets
-│   │   ├── favicon.svg                 # Application favicon
-│   │   └── icons.svg                   # SVG icon spritesheet
 │   └── src/
 │       ├── main.jsx                    # React DOM entrypoint
-│       ├── App.jsx                     # Master split-screen layout component & answering state
+│       ├── App.jsx                     # Master application shell, tab routing & active document state
 │       ├── App.css                     # Custom animations, glow utility styles, and scrollbars
 │       ├── index.css                   # Core design system & Tailwind directives
 │       ├── api.js                      # Centralized API service connecting to FastAPI backend
 │       ├── assets/                     # Graphic assets and logos
+│       ├── pages/                      # Dedicated Top-Level Pages
+│       │   ├── ChatPage.jsx            # Main interactive chat & question-answering page
+│       │   ├── DocumentsPage.jsx       # Document management, metadata cards & inline viewing
+│       │   ├── SystemPage.jsx          # Live system diagnostics, ChromaDB stats & provider status
+│       │   └── UploadPage.jsx          # Full drag-and-drop file upload & format guidance
 │       └── components/
-│           ├── FileUploader.jsx        # Left sidebar uploader, drag-and-drop, and document list
 │           ├── ChatWindow.jsx          # Right panel markdown chat, citations, suggestions & clear chat
-│           ├── ChatArea.jsx            # Reusable chat interface variant
-│           ├── DocumentSidebar.jsx     # Reusable document browser sidebar variant with format badges
+│           ├── DocumentSidebar.jsx     # Document switcher sidebar with format badges
+│           ├── DocumentPageModal.jsx   # In-app document viewer modal for cited pages
 │           ├── Navbar.jsx              # Navigation header bar with live backend health monitor
 │           └── UploadModal.jsx         # Modal dialog variant for multi-format file upload
 │
@@ -120,26 +132,28 @@ Task-RAG/
 #### [`chat_history_service.py`](file:///e:/Task-RAG/backend/app/services/chat_history_service.py)
 - **Role**: Persistent conversation storage backed by SQLite (`vector_db/chat_history.db`).
 - **Core Methods**:
-  - `add_message(doc_id, role, content, sources, is_error, timestamp)`: Inserts user or assistant turns with JSON-encoded page source citations.
-  - `get_messages(doc_id)`: Retrieves all chronological messages for the selected document.
+  - `add_message(doc_id, role, content, sources, source_details, suggested_questions)`: Inserts user or assistant turns with rich page source citations and follow-up prompts.
+  - `get_messages(doc_id)`: Retrieves all chronological messages for the selected document or 'all'.
   - `clear_messages(doc_id)`: Deletes conversation records when the user clicks "Clear Chat" or deletes a document.
 
 #### [`llm_service.py`](file:///e:/Task-RAG/backend/app/services/llm_service.py)
-- **Role**: Generative AI orchestration, strict context synthesis, and dynamic suggested question generation.
+- **Role**: Generative AI orchestration, strict context synthesis, multi-file suggestions, and connection pooling.
 - **Key Methods**:
-  - `generate_suggested_questions(filename, sample_chunks)`: Analyzes sample chunks of a document to generate 3 to 4 specific, relevant, non-generic prompt questions tailored to that exact document (e.g., candidate skills for a resume, methodology for a research paper, system architecture for a technical report).
-  - `generate_answer(question, chunks, metadatas)`: Queries Google Gemini (`gemini-2.5-flash`), OpenAI (`gpt-4o-mini`), or offline extractive synthesis with strict zero-hallucination guardrails and page citation requirements (`(Page X)`).
+  - `generate_suggested_questions(filename, sample_chunks)`: Analyzes sample chunks of a document to generate 3 to 4 specific, relevant, non-generic prompt questions tailored to that exact document.
+  - `generate_all_documents_suggested_questions(all_files_data)`: Synthesizes excerpts across **all uploaded files** to generate 4 to 6 relevant questions representing each distinct document and cross-document themes for the main page.
+  - `generate_answer(question, chunks, metadatas)`: Queries Google Gemini (`gemini-3.5-flash-lite`, `gemini-flash-lite-latest`), OpenAI (`gpt-4o-mini`), or offline extractive synthesis with strict zero-hallucination guardrails and page citation cleaning.
+  - `generate_sequential_questions(filename, question, answer, chunks)`: Generates 3 intelligent follow-up questions based on the answer and context.
 
 #### [`vector_store.py`](file:///e:/Task-RAG/backend/app/services/vector_store.py)
-- **Role**: Document ingestion, multi-format text extraction, chunking, and hybrid search.
+- **Role**: Document ingestion, multi-format text extraction, chunking, and high-speed hybrid search.
 - **Key Methods**:
-  - `_extract_pages_from_content(filename, content)`:
-    - **PDF**: PyMuPDF (`fitz.open`) with `sort=True` for layout-aware reading order and running header/footer stripping.
-    - **DOCX / DOC**: `python-docx` extraction of paragraphs, headings, and table cells, plus fallback stream extraction. Segments text into logical ~2000-character pages for accurate page-level citations.
+  - `extract_text_with_page_metadata(filename, content)`:
+    - **PDF**: PyMuPDF (`pymupdf as fitz`) with `sort=True` for layout-aware reading order and running header/footer stripping.
+    - **DOCX / DOC**: `python-docx` extraction of paragraphs, headings, and table cells, plus fallback stream extraction. Segments text into logical ~2000-character pages.
     - **TXT / MD**: Structured section detection and ~2500-character virtual page segmentation.
-  - `index_document(filename, content, llm_service)`: Splits extracted text with `RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)`, creates ONNX embeddings, indexes into ChromaDB in batches of 200 chunks, generates dynamic suggested questions, and saves document metadata into `documents_registry.json`.
-  - `retrieve_top_chunks(doc_id, question, n_results)`: Executes Reciprocal Rank Fusion (RRF) combining dense cosine similarity with BM25 keyword, numerical, and acronym scoring.
-  - `get_suggested_questions(doc_id, llm_service)`: Fetches cached suggested questions or generates and stores them on-demand.
+  - `index_document(filename, content, llm_service)`: Splits extracted text with `RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)`, creates ONNX embeddings, indexes into ChromaDB in batches, generates dynamic suggested questions, saves document metadata, and caches raw files.
+  - `retrieve_top_chunks(doc_id, question, n_results)`: Executes direct ChromaDB query combining dense similarity with BM25 keyword, numerical, and acronym scoring via Reciprocal Rank Fusion (RRF).
+  - `get_suggested_questions(doc_id, llm_service)`: For single document, returns file-specific questions; for `all` (main page), aggregates excerpts from all files and generates questions spanning all documents with zero-latency caching.
 
 ---
 
@@ -148,14 +162,18 @@ Task-RAG/
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/` | API status and root information. |
-| `GET` | `/api/health` | Live system health check, indexed document count, and active LLM status. |
+| `GET` | `/api/health` | Live system health check, indexed document count, vector DB path, and active LLM status. |
 | `GET` | `/api/documents` | Lists all indexed documents with chunk counts, page counts, and metadata. |
 | `DELETE` | `/api/documents/{doc_id}` | Deletes a document from ChromaDB, registry, and purges its chat history. |
-| `GET` | `/api/documents/{doc_id}/suggested-questions` | Returns 3–4 dynamic questions tailored to the document. |
+| `GET` | `/api/documents/{doc_id}/suggested-questions` | Returns dynamic questions tailored to the document (or all documents if `doc_id="all"`). |
+| `GET` | `/api/documents/{doc_id}/pages/{page_num}` | Retrieves full text content, metadata, and viewing URLs for a specific document page. |
+| `GET` | `/api/documents/{doc_id}/file` | Streams raw file inline with PDF `#page=X` browser jump support. |
+| `GET` | `/api/documents/{doc_id}/file/{filename}` | Streams raw file with explicit filename for browser deep-linking. |
 | `GET` | `/api/documents/{doc_id}/chat` | Retrieves persistent SQLite conversation history for the specified file. |
 | `DELETE` | `/api/documents/{doc_id}/chat` | Clears SQLite conversation history for the specified file. |
 | `POST` | `/api/upload` | Uploads and indexes `.pdf`, `.txt`, `.docx`, or `.doc` file asynchronously. |
-| `POST` | `/api/ask` | Accepts `{ doc_id, question }`, persists user turn, retrieves top 4 RRF chunks, generates answer, persists assistant turn, and returns `{ answer, sources }`. |
+| `POST` | `/api/ask` | Accepts `{ doc_id, question }`, persists user turn, retrieves top 4 RRF chunks, generates answer, persists assistant turn, and returns `{ answer, sources, source_details, suggested_questions }`. |
+| `POST` | `/api/chat/sequential` | Generates 3 sequential follow-up questions given a document question and context. |
 
 ---
 

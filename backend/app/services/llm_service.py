@@ -343,6 +343,123 @@ class LLMService:
 
         return questions[:4]
 
+    def generate_all_documents_suggested_questions(self, all_files_data: List[Dict[str, Any]]) -> List[str]:
+        """
+        Reads across all uploaded files and generates 4 to 6 relevant, specific questions
+        spanning each uploaded document as well as comparative questions across documents.
+        """
+        if not all_files_data:
+            return [
+                "What topics and documents are available in the knowledge base?",
+                "How do I query specific information across my uploaded files?"
+            ]
+
+        if len(all_files_data) == 1:
+            return self.generate_suggested_questions(
+                all_files_data[0].get("filename", "document"),
+                all_files_data[0].get("chunks", [])
+            )
+
+        doc_summaries = []
+        for idx, doc in enumerate(all_files_data):
+            fn = doc.get("filename", f"Document {idx+1}")
+            chunks = doc.get("chunks", [])
+            preview_lines = []
+            for c in chunks[:2]:
+                cl = re.sub(r"^\[Page\s+\d+\]\s*", "", c).strip()
+                if cl:
+                    preview_lines.append(cl[:350])
+            preview = "\n".join(preview_lines) if preview_lines else "General document content."
+            doc_summaries.append(f"--- Document {idx + 1}: \"{fn}\" ---\n{preview}")
+
+        combined_context = "\n\n".join(doc_summaries)
+
+        prompt = (
+            f"You are an intelligent knowledge base analyst assisting a user in a multi-document RAG system.\n"
+            f"The user has uploaded {len(all_files_data)} documents to the system:\n\n"
+            f"{combined_context}\n\n"
+            f"Generate 4 to 6 concise, highly relevant, and engaging questions for the main chat page.\n\n"
+            f"CRITICAL REQUIREMENTS:\n"
+            f"1. READ AND REPRESENT ALL UPLOADED FILES: Make sure questions cover the different files uploaded (e.g. at least one specific question highlighting each document's distinct topic, project, questions, or subjects).\n"
+            f"2. Mention specific topics, technologies, problems, or entities from the files (e.g. project features, algorithms, programming questions, or story elements).\n"
+            f"3. Include a question that synthesizes or compares topics across the uploaded files.\n"
+            f"4. DO NOT generate generic questions like 'What is in file 1?' or 'Summarize all files'. Each question must be specific and directly answerable from the files.\n"
+            f"5. Return ONLY a valid JSON array of 4 to 6 string questions, with no markdown code fences, comments, or extra text.\n"
+            f"Example format:\n"
+            f"[\"What is the system architecture of the Vital-Link blood donor project?\", \"How do you solve the Zoho number system problem using digits 3 and 4?\", \"How can you check a 5-digit number in C without using loops?\", \"What programming algorithms and frameworks are covered across the uploaded files?\"]"
+        )
+
+        # 1. Google Gemini
+        gemini_client = self._get_gemini_client()
+        if gemini_client:
+            try:
+                from google.genai import types
+                for model_name in self.GEMINI_MODELS:
+                    try:
+                        res = gemini_client.models.generate_content(
+                            model=model_name,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                temperature=0.3,
+                                response_mime_type="application/json"
+                            )
+                        )
+                        if res and res.text:
+                            raw = res.text.strip()
+                            if raw.startswith("```"):
+                                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                                raw = re.sub(r"\s*```$", "", raw)
+                            parsed = json.loads(raw)
+                            if isinstance(parsed, list) and len(parsed) >= 2:
+                                return [str(q).strip() for q in parsed if str(q).strip()][:6]
+                            elif isinstance(parsed, dict):
+                                for val in parsed.values():
+                                    if isinstance(val, list) and len(val) >= 2:
+                                        return [str(q).strip() for q in val if str(q).strip()][:6]
+                    except Exception as model_err:
+                        continue
+            except Exception as e:
+                print(f"[LLMService] Gemini multi-doc suggestions notice: {e}")
+
+        # 2. OpenAI
+        openai_client = self._get_openai_client()
+        if openai_client:
+            try:
+                res = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You output only a JSON array of 4 to 6 specific questions representing all uploaded documents."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    response_format={"type": "json_object"}
+                )
+                raw = res.choices[0].message.content
+                if raw:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        for val in parsed.values():
+                            if isinstance(val, list) and len(val) >= 2:
+                                return [str(q).strip() for q in val if str(q).strip()][:6]
+                    elif isinstance(parsed, list) and len(parsed) >= 2:
+                        return [str(q).strip() for q in parsed if str(q).strip()][:6]
+            except Exception as e:
+                print(f"[LLMService] OpenAI multi-doc suggestions notice: {e}")
+
+        # 3. Dynamic Heuristic Fallback spanning all files
+        fallback_questions = []
+        for doc in all_files_data:
+            fn = doc.get("filename", "")
+            chunks = doc.get("chunks", [])
+            q_list = self._generate_heuristic_suggested_questions(fn, chunks)
+            if q_list:
+                fallback_questions.append(q_list[0])
+
+        if len(all_files_data) > 1:
+            fallback_questions.append("What key concepts and methodologies are shared across all uploaded documents?")
+
+        return fallback_questions[:6]
+
     def generate_sequential_questions(
         self,
         filename: str,

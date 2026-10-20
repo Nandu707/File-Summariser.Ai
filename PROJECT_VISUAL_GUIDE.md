@@ -30,8 +30,8 @@ flowchart TB
     end
 
     subgraph Inference["LLM Reasoning & Generation Engine"]
-        LLMRouter["LLMService Controller"]
-        GeminiFlash["Google Gemini API<br/>(gemini-3.1-flash-lite / gemini-3.5-flash)"]
+        LLMRouter["LLMService Controller (Connection Pooled)"]
+        GeminiFlash["Google Gemini API<br/>(gemini-3.5-flash-lite / gemini-flash-lite-latest)"]
         OpenAIGPT["OpenAI API Fallback<br/>(gpt-4o-mini)"]
         OfflineHeuristic["Deterministic Heuristic Fallback Engine<br/>(100% Offline)"]
     end

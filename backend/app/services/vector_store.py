@@ -148,6 +148,8 @@ class VectorStoreService:
             if doc_id in reg:
                 del reg[doc_id]
                 self._save_registry(reg)
+                self._all_docs_questions_cache = None
+                self._all_docs_questions_cache_key = None
             return True
         except Exception as e:
             print(f"[VectorStore] Error deleting document {doc_id}: {e}")
@@ -388,6 +390,8 @@ class VectorStoreService:
             "suggested_questions": suggested_questions
         }
         self._save_registry(reg)
+        self._all_docs_questions_cache = None
+        self._all_docs_questions_cache_key = None
 
         # Cache raw file and page structures locally for instant page viewing
         try:
@@ -429,20 +433,69 @@ class VectorStoreService:
 
     def get_suggested_questions(self, doc_id: str, llm_service=None) -> List[str]:
         """
-        Retrieves or dynamically generates 3-4 variable suggested questions suitable for this document or all documents.
+        Retrieves or dynamically generates 3-5 variable suggested questions suitable for this document or all documents.
+        When doc_id is 'all' (main page), it reads across all uploaded files to generate relevant questions for each file.
         """
         is_all = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
         reg = self._get_registry()
 
         if is_all:
-            filename = "all uploaded documents"
-            sample_chunks = []
-            try:
-                res = self.collection.get(limit=3)
-                if res and res.get("documents"):
-                    sample_chunks = res["documents"]
-            except Exception as e:
-                print(f"[VectorStore] Notice getting chunks for all-docs suggestions: {e}")
+            if not reg:
+                return [
+                    "How do I upload and index documents in this system?",
+                    "What file formats (PDF, DOCX, TXT) are supported?"
+                ]
+
+            # Invalidate/check multi-document suggestions cache
+            current_cache_key = tuple(sorted(reg.keys()))
+            if getattr(self, "_all_docs_questions_cache_key", None) == current_cache_key:
+                cached_questions = getattr(self, "_all_docs_questions_cache", None)
+                if cached_questions and len(cached_questions) >= 2:
+                    return cached_questions
+
+            # Read excerpts across ALL uploaded files
+            all_files_data = []
+            for d_id, doc_info in reg.items():
+                fn = doc_info.get("filename", "document")
+                chunks = []
+                try:
+                    res = self.collection.get(where={"doc_id": d_id}, limit=2)
+                    if res and res.get("documents"):
+                        chunks = res["documents"]
+                except Exception:
+                    pass
+
+                if not chunks:
+                    pages = self.get_all_pages_for_document(d_id)
+                    if pages:
+                        chunks = [p["text"][:600] for p in pages[:2]]
+
+                all_files_data.append({
+                    "doc_id": d_id,
+                    "filename": fn,
+                    "chunks": chunks
+                })
+
+            questions = []
+            if llm_service is not None and hasattr(llm_service, "generate_all_documents_suggested_questions"):
+                try:
+                    questions = llm_service.generate_all_documents_suggested_questions(all_files_data)
+                except Exception as e:
+                    print(f"[VectorStore] Error generating multi-document questions: {e}")
+
+            if not questions:
+                # Heuristic fallback across all files
+                for d in all_files_data:
+                    base_fn = re.sub(r"\.[a-zA-Z0-9]+$", "", d["filename"])
+                    questions.append(f"What key information or problems are covered in {base_fn}?")
+                if len(all_files_data) > 1:
+                    questions.append("What are the primary findings and common themes across all uploaded files?")
+
+            # Cache the generated questions
+            self._all_docs_questions_cache_key = current_cache_key
+            self._all_docs_questions_cache = questions[:6]
+            return self._all_docs_questions_cache
+
         else:
             doc = reg.get(doc_id)
             if doc and doc.get("suggested_questions") and len(doc["suggested_questions"]) >= 2:
@@ -459,27 +512,27 @@ class VectorStoreService:
             except Exception as e:
                 print(f"[VectorStore] Notice getting chunks for suggestions: {e}")
 
-        questions = []
-        if llm_service is not None:
-            try:
-                questions = llm_service.generate_suggested_questions(filename, sample_chunks)
-            except Exception as e:
-                print(f"[VectorStore] Error generating questions: {e}")
+            questions = []
+            if llm_service is not None:
+                try:
+                    questions = llm_service.generate_suggested_questions(filename, sample_chunks)
+                except Exception as e:
+                    print(f"[VectorStore] Error generating questions: {e}")
 
-        if not questions:
-            questions = [
-                f"What is the central topic and summary of {filename}?",
-                "What key numbers, statistics, or metrics are mentioned?",
-                "What are the primary conclusions or next steps?"
-            ]
+            if not questions:
+                questions = [
+                    f"What is the central topic and summary of {filename}?",
+                    "What key numbers, statistics, or metrics are mentioned?",
+                    "What are the primary conclusions or next steps?"
+                ]
 
-        # Cache in registry if document exists
-        if not is_all and doc:
-            doc["suggested_questions"] = questions
-            reg[doc_id] = doc
-            self._save_registry(reg)
+            # Cache in registry if document exists
+            if doc:
+                doc["suggested_questions"] = questions
+                reg[doc_id] = doc
+                self._save_registry(reg)
 
-        return questions
+            return questions
 
     def get_all_pages_for_document(self, doc_id: str) -> List[Dict[str, Any]]:
         """
