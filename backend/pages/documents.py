@@ -118,9 +118,20 @@ async def get_suggested_questions(doc_id: str):
     """
     Returns 3 to 4 variable questions specifically tailored to the selected document.
     """
-    if not doc_id.strip():
+    clean_id = doc_id.strip()
+    if not clean_id:
         raise HTTPException(status_code=400, detail="doc_id cannot be empty")
-    questions = await asyncio.to_thread(vector_store.get_suggested_questions, doc_id, llm_service)
+
+    target_id = clean_id
+    if clean_id.startswith("chat_"):
+        session = await asyncio.to_thread(chat_history.get_session, clean_id)
+        if session:
+            if session.get("scope") == "file" and session.get("file_id"):
+                target_id = session["file_id"]
+            elif session.get("scope") == "all":
+                target_id = "all"
+
+    questions = await asyncio.to_thread(vector_store.get_suggested_questions, target_id, llm_service)
     return {
         "doc_id": doc_id,
         "suggested_questions": questions

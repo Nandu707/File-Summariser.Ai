@@ -293,29 +293,33 @@ async def ask_question(request: AskRequest):
             active_file_ids
         )
 
-        # Concurrently generate answer and sequential questions
-        answer_task = asyncio.to_thread(
+        # Generate answer using LLM
+        answer = await asyncio.to_thread(
             llm_service.generate_answer,
             question=request.question,
             chunks=chunks,
             metadatas=metadatas,
             history=safe_history
         )
-        seq_task = asyncio.to_thread(
-            llm_service.generate_sequential_questions,
-            filename=doc_filename,
-            question=request.question,
-            answer="",
-            chunks=chunks
-        )
 
-        answer = await answer_task
+        # Generate sequential follow-up questions strictly relatable to this document and exchange
         try:
-            sequential_questions = await asyncio.wait_for(seq_task, timeout=0.8)
+            seq_task = asyncio.to_thread(
+                llm_service.generate_sequential_questions,
+                filename=doc_filename,
+                question=request.question,
+                answer=answer,
+                chunks=chunks
+            )
+            sequential_questions = await asyncio.wait_for(seq_task, timeout=2.5)
             if not sequential_questions:
-                sequential_questions = llm_service._generate_heuristic_suggested_questions(doc_filename, chunks)[:3]
+                sequential_questions = llm_service._generate_heuristic_sequential_questions(
+                    doc_filename, request.question, answer, chunks
+                )[:3]
         except Exception:
-            sequential_questions = llm_service._generate_heuristic_suggested_questions(doc_filename, chunks)[:3]
+            sequential_questions = llm_service._generate_heuristic_sequential_questions(
+                doc_filename, request.question, answer, chunks
+            )[:3]
 
         # Ground citations to retain chunks that genuinely contributed to the answer
         grounded_source_details = []

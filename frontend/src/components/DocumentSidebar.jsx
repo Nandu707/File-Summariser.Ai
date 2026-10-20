@@ -77,8 +77,8 @@ export default function DocumentSidebar({
         setShowNewChatMenu(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   // Filter sessions: strictly show only sessions that have actual chat history
@@ -359,6 +359,16 @@ export default function DocumentSidebar({
                             <span className={`w-1.5 h-1.5 rounded-full mr-1 ${isDeleted ? 'bg-rose-500' : 'bg-indigo-600 animate-pulse'}`} />
                           )}
 
+                          {/* Direct Delete Button (Hover) */}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteClick(e, session)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-all cursor-pointer"
+                            title="Delete chat"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* Chat Menu Trigger */}
                           <div className="relative" ref={menuOpenId === session.id ? menuRef : null}>
                             <button
@@ -375,7 +385,10 @@ export default function DocumentSidebar({
 
                             {/* Menu Dropdown */}
                             {menuOpenId === session.id && (
-                              <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-1 space-y-0.5">
+                              <div
+                                className="absolute right-0 top-full mt-1 w-32 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-1 space-y-0.5"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
                                 <button
                                   type="button"
                                   onClick={(e) => handleStartRename(e, session)}

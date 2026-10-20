@@ -74,6 +74,7 @@ export default function ChatWindow({
   // Load chat session messages when effectiveSessionId changes
   useEffect(() => {
     setError(null);
+    setSuggestedQuestions([]);
     inputRef.current?.focus();
 
     let isMounted = true;
@@ -180,12 +181,12 @@ export default function ChatWindow({
       `Are you sure you want to permanently delete the chat history for "${sessionTitle}"? This cannot be undone.`
     );
     if (confirmed) {
+      setMessages([]);
       if (onDeleteSession) {
         onDeleteSession(effectiveSessionId);
       } else {
         try {
           await axios.delete(`http://localhost:8000/api/chats/${effectiveSessionId}`);
-          setMessages([]);
         } catch (e) {
           console.error('Delete chat error:', e);
         }
@@ -321,11 +322,17 @@ export default function ChatWindow({
     window.open(pdfUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const defaultSamplePrompts = [
-    'Summarize the key topics and findings across all uploaded documents.',
-    'What key numbers, statistics, or metrics are mentioned in the files?',
-    'What are the primary conclusions and recommended next steps?'
-  ];
+  const defaultSamplePrompts = isAllDocs
+    ? [
+        'Summarize the key topics and findings across all uploaded documents.',
+        'What key numbers, statistics, or metrics are mentioned in the files?',
+        'What are the primary conclusions and recommended next steps?'
+      ]
+    : [
+        `What is the central topic and summary of ${sessionTitle}?`,
+        `What key facts, data, or events are detailed in ${sessionTitle}?`,
+        `What are the primary conclusions and takeaways in ${sessionTitle}?`
+      ];
 
   return (
     <section className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-sm flex flex-col h-full overflow-hidden relative">

@@ -26,9 +26,6 @@ export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus,
                   <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 bg-clip-text text-transparent">
                     File Summariser.Ai
                   </span>
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80">
-                    RAG Engine
-                  </span>
                 </div>
               </div>
             </div>

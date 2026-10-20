@@ -456,7 +456,7 @@ class ChatHistoryService:
             return False
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM messages WHERE chat_id = ? OR doc_id = ?", (chat_id, chat_id))
+            cursor.execute("DELETE FROM messages WHERE chat_id = ? OR (chat_id IS NULL AND doc_id = ?)", (chat_id, chat_id))
             cursor.execute("DELETE FROM chat_sessions WHERE id = ?", (chat_id,))
             if chat_id != "all":
                 cursor.execute("DELETE FROM threads WHERE doc_id = ?", (chat_id,))
