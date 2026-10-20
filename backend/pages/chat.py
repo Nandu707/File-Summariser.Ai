@@ -14,7 +14,7 @@ from .schemas import (
 router = APIRouter(tags=["chat"])
 
 # ==========================================
-# CHAT SESSIONS ENDPOINTS (CHATGPT-STYLE)
+# CHAT SESSIONS ENDPOINTS
 # ==========================================
 
 @router.get("/api/chats")

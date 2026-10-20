@@ -29,7 +29,7 @@ export default function ChatPage({
     filename: ''
   });
 
-  // Fetch all chat sessions (ChatGPT-style single list)
+  // Fetch all chat sessions
   const fetchSessions = useCallback(async (q = '') => {
     try {
       setLoadingSessions(true);
@@ -153,7 +153,7 @@ export default function ChatPage({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col lg:flex-row h-full max-w-7xl w-full mx-auto p-3 sm:p-5 lg:p-6 gap-4 sm:gap-6 overflow-hidden">
-      {/* ChatGPT-Style History Sidebar */}
+      {/* Chat History Sidebar */}
       <DocumentSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}

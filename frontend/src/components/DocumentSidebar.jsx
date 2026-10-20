@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 /**
- * Categorizes an ISO timestamp into ChatGPT-style time buckets:
+ * Categorizes an ISO timestamp into chronological time buckets:
  * Today, Yesterday, Previous 7 days, Previous 30 days, or Month Year.
  */
 function getTimeGroup(dateStr) {
@@ -177,7 +177,7 @@ export default function DocumentSidebar({
             </div>
             <div>
               <h2 className="text-xs font-bold text-slate-900 tracking-tight">Chats</h2>
-              <p className="text-[10px] text-slate-500">ChatGPT-style history</p>
+              <p className="text-[10px] text-slate-500">Conversation history</p>
             </div>
           </div>
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">

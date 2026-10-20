@@ -9,7 +9,7 @@ from datetime import datetime
 class ChatHistoryService:
     """
     SQLite persistent storage for chat sessions, messages, and file statuses.
-    Supports ChatGPT-style multiple sessions per file and global 'All files' sessions,
+    Supports multiple sessions per file and global 'All files' sessions,
     with time-based grouping, full-text search, auto-titling, and soft deletion of files.
     """
     def __init__(self, db_path: Optional[Path] = None):
@@ -47,7 +47,7 @@ class ChatHistoryService:
                 )
             """)
 
-            # 2. Chat sessions table (ChatGPT-style)
+            # 2. Chat sessions table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS chat_sessions (
                     id TEXT PRIMARY KEY,
@@ -265,7 +265,7 @@ class ChatHistoryService:
             return None
 
     # ==========================================
-    # CHAT SESSION MANAGEMENT (CHATGPT-STYLE)
+    # CHAT SESSION MANAGEMENT
     # ==========================================
 
     def create_session(
