@@ -27,7 +27,7 @@ Question: What is this document?
 
 Strict Context-Only Answer:"""
 
-for m in ['gemini-2.5-flash', 'gemini-3.5-flash-lite']:
+for m in ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.5-flash']:
     try:
         res = client.models.generate_content(model=m, contents=prompt)
         print(f'{m} response: {res.text.strip()}')

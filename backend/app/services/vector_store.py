@@ -5,7 +5,7 @@ import uuid
 import math
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple, Union
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 import chromadb
 from dotenv import load_dotenv
 
@@ -75,9 +75,11 @@ class VectorStoreService:
             col_names = [c.name for c in self.client.list_collections()]
             if "task_rag_documents" in col_names:
                 legacy_col = self.client.get_collection("task_rag_documents")
+                if legacy_col.count() == 0:
+                    return
                 old_data = legacy_col.get()
                 if old_data and old_data.get("ids"):
-                    target_existing = set(self.collection.get().get("ids", []))
+                    target_existing = set(self.collection.get(include=[]).get("ids", []))
                     new_ids = []
                     new_docs = []
                     new_metas = []
@@ -696,83 +698,40 @@ class VectorStoreService:
         """
         is_all_docs = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
 
-        if is_all_docs:
-            matching = self.collection.get()
-            target_col = self.collection
-            if not matching or not matching["ids"]:
-                try:
-                    col_names = [c.name for c in self.client.list_collections()]
-                    if "task_rag_documents" in col_names:
-                        legacy_col = self.client.get_collection("task_rag_documents")
-                        legacy_match = legacy_col.get()
-                        if legacy_match and legacy_match["ids"]:
-                            matching = legacy_match
-                            target_col = legacy_col
-                except Exception:
-                    pass
+        total_chunks = self.collection.count()
+        if total_chunks == 0:
+            return [], [], []
 
-            if not matching or not matching["ids"]:
-                return [], [], []
+        candidate_k = min(32, total_chunks)
+        cand_chunks: List[str] = []
+        cand_metas: List[Dict[str, Any]] = []
+        cand_distances: List[float] = []
 
-            doc_chunk_count = len(matching["ids"])
-            candidate_k = min(32, doc_chunk_count)
+        try:
+            query_kwargs = {
+                "query_texts": [question],
+                "n_results": candidate_k
+            }
+            if not is_all_docs:
+                query_kwargs["where"] = {"doc_id": doc_id}
 
+            query_res = self.collection.query(**query_kwargs)
+            cand_chunks = query_res.get("documents", [[]])[0]
+            cand_metas = query_res.get("metadatas", [[]])[0]
+            cand_distances = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
+        except Exception as query_err:
+            print(f"[VectorStore] Dense query fallback notice: {query_err}")
+
+        # Fallback if query returned empty but document has chunks
+        if not cand_chunks and not is_all_docs:
             try:
-                query_res = target_col.query(
-                    query_texts=[question],
-                    n_results=candidate_k
-                )
-                cand_chunks: List[str] = query_res.get("documents", [[]])[0]
-                cand_metas: List[Dict[str, Any]] = query_res.get("metadatas", [[]])[0]
-                cand_distances: List[float] = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
-            except Exception as query_err:
-                print(f"[VectorStore] Dense query fallback notice (all docs): {query_err}")
-                cand_chunks = []
-                cand_metas = []
-                cand_distances = []
-        else:
-            matching = self.collection.get(where={"doc_id": doc_id})
-            target_col = self.collection
-            if not matching or not matching["ids"]:
-                try:
-                    col_names = [c.name for c in self.client.list_collections()]
-                    if "task_rag_documents" in col_names:
-                        legacy_col = self.client.get_collection("task_rag_documents")
-                        legacy_match = legacy_col.get(where={"doc_id": doc_id})
-                        if legacy_match and legacy_match["ids"]:
-                            matching = legacy_match
-                            target_col = legacy_col
-                except Exception:
-                    pass
-
-            if not matching or not matching["ids"]:
-                return [], [], []
-
-            doc_chunk_count = len(matching["ids"])
-
-            # Fetch candidate pool (up to 32 chunks or all document chunks if fewer)
-            candidate_k = min(32, doc_chunk_count)
-
-            try:
-                query_res = target_col.query(
-                    query_texts=[question],
-                    n_results=candidate_k,
-                    where={"doc_id": doc_id}
-                )
-                cand_chunks: List[str] = query_res.get("documents", [[]])[0]
-                cand_metas: List[Dict[str, Any]] = query_res.get("metadatas", [[]])[0]
-                cand_distances: List[float] = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
-            except Exception as query_err:
-                print(f"[VectorStore] Dense query fallback notice: {query_err}")
-                cand_chunks = []
-                cand_metas = []
-                cand_distances = []
-
-        # If vector query didn't return candidates but document has chunks, use all document chunks
-        if not cand_chunks and matching and matching.get("documents"):
-            cand_chunks = matching["documents"][:candidate_k]
-            cand_metas = matching.get("metadatas", [])[:candidate_k] if matching.get("metadatas") else []
-            cand_distances = []
+                fb = self.collection.get(where={"doc_id": doc_id}, limit=candidate_k)
+                if fb and fb.get("documents"):
+                    cand_chunks = fb["documents"]
+                    cand_metas = fb.get("metadatas", [])
+                    cand_distances = []
+            except Exception:
+                pass
 
         if not cand_chunks:
             return [], [], []

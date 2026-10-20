@@ -4,7 +4,7 @@ import uuid
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 import chromadb
 from dotenv import load_dotenv
 

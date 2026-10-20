@@ -20,9 +20,31 @@ CRITICAL RULES:
 """
 
 class LLMService:
+    GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-flash-latest"]
+
     def __init__(self, gemini_api_key: Optional[str] = None, openai_api_key: Optional[str] = None):
         self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
         self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        self._gemini_client = None
+        self._openai_client = None
+
+    def _get_gemini_client(self):
+        if self._gemini_client is None and self.gemini_api_key:
+            try:
+                from google import genai
+                self._gemini_client = genai.Client(api_key=self.gemini_api_key)
+            except Exception as e:
+                print(f"[LLMService] Error initializing Gemini client: {e}")
+        return self._gemini_client
+
+    def _get_openai_client(self):
+        if self._openai_client is None and self.openai_api_key:
+            try:
+                from openai import OpenAI
+                self._openai_client = OpenAI(api_key=self.openai_api_key)
+            except Exception as e:
+                print(f"[LLMService] Error initializing OpenAI client: {e}")
+        return self._openai_client
 
     def format_context(self, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
         """Formats top 4 chunks with filename and page metadata into structured context."""
@@ -58,14 +80,13 @@ class LLMService:
 
         ans = None
         # 1. Google Gemini API (if key configured)
-        if self.gemini_api_key:
+        gemini_client = self._get_gemini_client()
+        if gemini_client:
             try:
-                from google import genai
                 from google.genai import types
-                client = genai.Client(api_key=self.gemini_api_key)
-                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
+                for model_name in self.GEMINI_MODELS:
                     try:
-                        response = client.models.generate_content(
+                        response = gemini_client.models.generate_content(
                             model=model_name,
                             contents=prompt,
                             config=types.GenerateContentConfig(
@@ -82,7 +103,8 @@ class LLMService:
                 print(f"[LLMService] Gemini generation error, falling back: {e}")
 
         # 2. OpenAI API (if key configured)
-        if not ans and self.openai_api_key:
+        openai_client = self._get_openai_client()
+        if not ans and openai_client:
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=self.openai_api_key)
@@ -234,14 +256,13 @@ class LLMService:
         )
 
         # 1. Google Gemini
-        if self.gemini_api_key:
+        gemini_client = self._get_gemini_client()
+        if gemini_client:
             try:
-                from google import genai
                 from google.genai import types
-                client = genai.Client(api_key=self.gemini_api_key)
-                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
+                for model_name in self.GEMINI_MODELS:
                     try:
-                        res = client.models.generate_content(
+                        res = gemini_client.models.generate_content(
                             model=model_name,
                             contents=prompt,
                             config=types.GenerateContentConfig(
@@ -267,11 +288,10 @@ class LLMService:
                 print(f"[LLMService] Gemini suggestions notice: {e}")
 
         # 2. OpenAI
-        if self.openai_api_key:
+        openai_client = self._get_openai_client()
+        if openai_client:
             try:
-                from openai import OpenAI
-                client = OpenAI(api_key=self.openai_api_key)
-                res = client.chat.completions.create(
+                res = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "You output only a JSON array of 3 to 4 specific questions about the provided document context."},
@@ -361,14 +381,13 @@ class LLMService:
         )
 
         # 1. Google Gemini API
-        if self.gemini_api_key:
+        gemini_client = self._get_gemini_client()
+        if gemini_client:
             try:
-                from google import genai
                 from google.genai import types
-                client = genai.Client(api_key=self.gemini_api_key)
-                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
+                for model_name in self.GEMINI_MODELS:
                     try:
-                        res = client.models.generate_content(
+                        res = gemini_client.models.generate_content(
                             model=model_name,
                             contents=prompt,
                             config=types.GenerateContentConfig(
@@ -394,11 +413,10 @@ class LLMService:
                 print(f"[LLMService] Gemini sequential questions notice: {e}")
 
         # 2. OpenAI API
-        if self.openai_api_key:
+        openai_client = self._get_openai_client()
+        if openai_client:
             try:
-                from openai import OpenAI
-                client = OpenAI(api_key=self.openai_api_key)
-                res = client.chat.completions.create(
+                res = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "You output only a JSON array of exactly 3 sequential follow-up questions."},
