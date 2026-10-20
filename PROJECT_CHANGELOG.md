@@ -197,3 +197,20 @@ timeline
   - Prompts LLMs with combined multi-file context to generate 4 to 6 specific, relevant questions representing each uploaded file (e.g. project reports, Zoho programming challenges, C question sets), plus cross-document comparison questions.
   - Implemented dynamic cache invalidation on file upload/deletion, serving cached multi-file questions in **0ms** on repeated visits.
 
+---
+
+### Milestone 14: Dynamic Multi-File Recognition & Fair Candidate Allocation
+- **Root Cause Resolution for Starved Newly Uploaded Files**:
+  - *Problem*: When querying across all documents (`doc_id="all"`), ChromaDB's single flat approximate nearest neighbor (ANN) vector search was flooded by large pre-existing documents (e.g. a 113-chunk PDF report), completely starving newly uploaded documents (with fewer chunks) from entering the candidate pool. The LLM would only answer about old files.
+  - *Solution*: Overhauled [`retrieve_top_chunks`](file:///e:/Task-RAG/backend/app/services/vector_store.py) to implement **Guaranteed Per-Document Candidate Gathering**:
+    1. Runs global ANN search across the entire collection.
+    2. Runs targeted per-document queries (`where={"doc_id": doc_id}`) for **every registered document**, guaranteeing candidates from newly uploaded files are always retrieved.
+    3. Merges and scores candidates using Hybrid Reciprocal Rank Fusion (RRF), BM25 lexical relevance, and filename/recency intent boosting.
+    4. Implements multi-document diversity-aware selection, ensuring chunks from across all uploaded documents are fairly represented in the context passed to the LLM.
+- **Database Path Unification & Auto-Reconciliation**:
+  - Consolidated duplicate `vector_db` folders into a single canonical source of truth at project root `vector_db/`.
+  - Added `_find_project_root()` and `_sync_backend_db_if_needed()` to auto-migrate any chunks and registry records from legacy directories.
+  - Implemented `_reconcile_registry_with_chromadb()`: whenever documents are listed, any chunk indexed in ChromaDB is dynamically reconciled and guaranteed to appear in the registry, ensuring no uploaded file is ever lost or unrecognised.
+- **Unicode Header Encoding Fix for Any Uploaded Filename**:
+  - In [documents.py](file:///e:/Task-RAG/backend/pages/documents.py), resolved `UnicodeEncodeError` in Starlette `FileResponse` for filenames containing unicode characters (e.g. en-dash `–`, curly quotes, accents) by implementing RFC 5987 / RFC 6266 compliant `Content-Disposition` headers (`ascii_clean; filename*=UTF-8''...`).
+

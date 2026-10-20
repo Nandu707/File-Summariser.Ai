@@ -9,21 +9,51 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 @router.get("/")
 def get_documents():
     """Returns list of indexed documents in persistent ChromaDB storage and Firebase."""
-    return vector_store.list_documents()
+    docs = vector_store.list_documents()
+    for d in docs:
+        chat_history.register_file(d["doc_id"], d.get("filename", "Document"), "active")
+    return docs
 
 @router.delete("/{doc_id}")
 def delete_document(doc_id: str):
-    """Deletes an indexed document from ChromaDB, registry, Firebase, and clears its chat history."""
+    """Deletes an indexed document from ChromaDB and registry while preserving chats as read-only."""
+    # Look up registry metadata before deletion to resolve IDs and filenames
+    reg = vector_store._get_registry()
+    target_id = doc_id
+    target_doc = reg.get(doc_id)
+    if not target_doc:
+        for did, info in reg.items():
+            if info.get("filename") == doc_id or did == doc_id:
+                target_id = did
+                target_doc = info
+                break
+
+    filename = target_doc.get("filename") if target_doc else None
+
+    # Perform vector store, file system, and registry deletion
     success = vector_store.delete_document(doc_id)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found or could not be deleted")
-    chat_history.clear_messages(doc_id)
+
+    # Mark file status as deleted in chat history so chats remain viewable and read-only
+    chat_history.mark_file_deleted(target_id)
+    if doc_id != target_id:
+        chat_history.mark_file_deleted(doc_id)
+
+    # Clean Firebase Firestore document record and storage if active, but leave chat if desired
     if getattr(firebase_service, "is_active", False):
         try:
-            firebase_service.delete_document(doc_id)
+            firebase_service.delete_document(target_id)
+            if doc_id != target_id:
+                firebase_service.delete_document(doc_id)
         except Exception as fe:
             print(f"[documents_page] Notice deleting from Firebase: {fe}")
-    return {"message": "Document deleted successfully", "doc_id": doc_id}
+
+    return {
+        "message": "Document removed from index and registry; chat preserved as read-only",
+        "doc_id": target_id,
+        "filename": filename
+    }
 
 @router.get("/{doc_id}/pages/{page_num}")
 async def get_document_page(doc_id: str, page_num: int):
@@ -71,11 +101,16 @@ async def get_document_file(doc_id: str, filename: Optional[str] = None):
     }
     media_type = media_type_map.get(ext, "application/octet-stream")
 
+    import urllib.parse
+    ascii_clean = filename.encode("ascii", "ignore").decode("ascii").strip()
+    if not ascii_clean:
+        ascii_clean = f"document.{ext}"
+    encoded_fn = urllib.parse.quote(filename)
+
     return FileResponse(
         path=str(file_path),
         media_type=media_type,
-        filename=filename,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'}
+        headers={"Content-Disposition": f'inline; filename="{ascii_clean}"; filename*=UTF-8\'\'{encoded_fn}'}
     )
 
 @router.get("/{doc_id}/suggested-questions")

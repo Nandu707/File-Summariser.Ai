@@ -6,21 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-STRICT_CONTEXT_SYSTEM_PROMPT = """You are a helpful and accurate document question-answering assistant.
-Your task is to answer the user's question based on the provided document context excerpts below.
-
-CRITICAL RULES:
-1. Base your answer on the provided context excerpts below.
-2. If the user asks for a summary, overview, or explanation of the document, provide a clear, concise summary using the facts and points present in the excerpts.
-3. If the user asks a specific question, find the relevant information in the excerpts and answer it directly.
-4. Do NOT include page numbers, source citations, or page references (e.g., do NOT write "(Page 1)" or "Page 2") in your answer. Present facts directly and cleanly.
-5. Keep your answer factual, direct, and concise.
-6. Always try your best to answer from the context. Even if the context is only partially relevant, extract and present whatever useful information is available.
-7. Only say you cannot find the answer if the context excerpts contain absolutely no information related to the question at all.
-"""
+STRICT_CONTEXT_SYSTEM_PROMPT = """You are given content from multiple uploaded files, each labelled with its file name. Answer using information from ALL relevant files. If a question spans several files, combine them. State which file each part of the answer comes from. If the answer is not in any uploaded file, say so instead of guessing."""
 
 class LLMService:
-    GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-flash-latest"]
+    GEMINI_MODELS = [
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-3.5-flash"
+    ]
 
     def __init__(self, gemini_api_key: Optional[str] = None, openai_api_key: Optional[str] = None):
         self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
@@ -29,10 +22,12 @@ class LLMService:
         self._openai_client = None
 
     def _get_gemini_client(self):
-        if self._gemini_client is None and self.gemini_api_key:
+        current_key = self.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        if self._gemini_client is None and current_key:
             try:
                 from google import genai
-                self._gemini_client = genai.Client(api_key=self.gemini_api_key)
+                self._gemini_client = genai.Client(api_key=current_key)
+                self.gemini_api_key = current_key
             except Exception as e:
                 print(f"[LLMService] Error initializing Gemini client: {e}")
         return self._gemini_client
@@ -47,7 +42,7 @@ class LLMService:
         return self._openai_client
 
     def format_context(self, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
-        """Formats top 4 chunks with filename and page metadata into structured context."""
+        """Formats chunks with filename and page metadata into structured context."""
         context_parts = []
         for idx, chunk in enumerate(chunks):
             page_num = "Unknown"
@@ -65,17 +60,28 @@ class LLMService:
         returning the answer. Primary: Google Gemini; Secondary: OpenAI; Fallback: offline grounded.
         """
         if not chunks:
-            return "I cannot find the answer in the provided document context."
+            return "The answer is not in any uploaded file."
 
         context_str = self.format_context(chunks, metadatas)
 
+        # Build list of available files to pass to LLM
+        available_files = []
+        if metadatas:
+            for m in metadatas:
+                if isinstance(m, dict):
+                    fn = m.get("filename")
+                    if fn and fn not in available_files:
+                        available_files.append(fn)
+        files_list_str = ", ".join(available_files) if available_files else "None"
+
         prompt = (
             f"{STRICT_CONTEXT_SYSTEM_PROMPT}\n\n"
-            f"--- PROVIDED CONTEXT (TOP 4 CHUNKS) ---\n"
+            f"Available uploaded files: {files_list_str}\n\n"
+            f"--- PROVIDED FILE EXCERPTS ---\n"
             f"{context_str}\n"
-            f"--- END OF CONTEXT ---\n\n"
+            f"--- END OF EXCERPTS ---\n\n"
             f"Question: {question}\n\n"
-            f"Strict Context-Only Answer:"
+            f"Answer:"
         )
 
         ans = None

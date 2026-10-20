@@ -1,6 +1,6 @@
 import asyncio
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
-from .deps import vector_store, llm_service, firebase_service
+from .deps import vector_store, llm_service, firebase_service, chat_history
 from .schemas import UploadResponse
 
 router = APIRouter(tags=["upload"])
@@ -37,6 +37,9 @@ async def upload_document(file: UploadFile = File(...)):
         # Uses PyMuPDF / python-docx + RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200) + ChromaDB
         # Non-blocking async thread execution for fast responsiveness on large files
         result = await asyncio.to_thread(vector_store.index_document, file.filename, content, llm_service, firebase_service)
+        # Register new active file in persistent SQLite files table
+        if result and result.get("doc_id"):
+            chat_history.register_file(result["doc_id"], result.get("filename", file.filename), "active")
         return result
 
     except HTTPException:

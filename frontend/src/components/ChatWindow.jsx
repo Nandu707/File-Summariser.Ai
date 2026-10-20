@@ -15,18 +15,27 @@ import {
   Layers,
   BookOpen,
   ArrowRight,
-  ChevronDown,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  Edit2
 } from 'lucide-react';
 
 export default function ChatWindow({
+  activeSessionId = 'all',
+  activeSession = null,
   activeDocId = 'all',
   documents = [],
-  onSelectDoc,
+  sessions = [],
+  onSelectSession,
+  onCreateSession,
+  onRenameSession,
+  onDeleteSession,
   onNavigateTab,
   onViewPage,
-  onLoadingChange
+  onLoadingChange,
+  onSessionActivity
 }) {
+  const effectiveSessionId = activeSessionId || activeDocId || 'all';
   const [messages, setMessages] = useState([]);
   const [question, setQuestion] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,16 +44,19 @@ export default function ChatWindow({
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [suggestedQuestions, setSuggestedQuestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
   const docCount = documents.length;
-  const isAllDocs = !activeDocId || activeDocId === 'all';
-  const activeDocument = isAllDocs ? null : documents.find((d) => d.doc_id === activeDocId);
-  const activeDocTitle = isAllDocs
-    ? `All Uploaded Documents (${docCount} ${docCount === 1 ? 'file' : 'files'})`
-    : activeDocument?.filename || 'Selected Document';
+  const isAllDocs = activeSession ? activeSession.scope === 'all' : effectiveSessionId === 'all';
+  const isFileDeleted = Boolean(activeSession?.is_file_deleted);
+
+  const sessionTitle = activeSession?.title || (isAllDocs ? 'All files' : activeSession?.file_name || 'Chat');
 
   const scrollToBottom = () => {
     if (chatContainerRef.current) {
@@ -59,26 +71,32 @@ export default function ChatWindow({
     scrollToBottom();
   }, [messages, loading]);
 
-  // Load persistent chat history and suggested questions when activeDocId changes
+  // Load chat session messages when effectiveSessionId changes
   useEffect(() => {
     setError(null);
     inputRef.current?.focus();
 
     let isMounted = true;
-    const effectiveId = activeDocId || 'all';
 
-    // Fetch persistent chat history
-    const fetchChatHistory = async () => {
+    const fetchChatMessages = async () => {
       setLoadingChat(true);
       try {
-        const res = await axios.get(`http://localhost:8000/api/documents/${effectiveId}/chat`);
+        const res = await axios.get(`http://localhost:8000/api/chats/${effectiveSessionId}`);
         if (isMounted && res.data && Array.isArray(res.data.messages)) {
           setMessages(res.data.messages);
         }
       } catch (err) {
-        if (isMounted) {
-          console.error('Failed to fetch chat history:', err);
-          setMessages([]);
+        // Fallback to legacy endpoint if chat session was not yet in sessions table
+        try {
+          const resLegacy = await axios.get(`http://localhost:8000/api/documents/${effectiveSessionId}/chat`);
+          if (isMounted && resLegacy.data && Array.isArray(resLegacy.data.messages)) {
+            setMessages(resLegacy.data.messages);
+          }
+        } catch (lErr) {
+          if (isMounted) {
+            console.error('Failed to fetch chat messages:', err);
+            setMessages([]);
+          }
         }
       } finally {
         if (isMounted) {
@@ -87,9 +105,9 @@ export default function ChatWindow({
       }
     };
 
-    fetchChatHistory();
+    fetchChatMessages();
 
-    // Fetch dynamic questions tailored to the active selection (all or specific file)
+    // Fetch suggested questions for the session scope
     const fetchQuestions = async () => {
       if (docCount === 0) {
         setSuggestedQuestions([]);
@@ -97,7 +115,8 @@ export default function ChatWindow({
       }
       setLoadingSuggestions(true);
       try {
-        const res = await axios.get(`http://localhost:8000/api/documents/${effectiveId}/suggested-questions`);
+        const targetId = isAllDocs ? 'all' : (activeSession?.file_id || effectiveSessionId);
+        const res = await axios.get(`http://localhost:8000/api/documents/${targetId}/suggested-questions`);
         if (isMounted && res.data && Array.isArray(res.data.suggested_questions) && res.data.suggested_questions.length > 0) {
           setSuggestedQuestions(res.data.suggested_questions);
         }
@@ -110,7 +129,7 @@ export default function ChatWindow({
               'Compare and synthesize the main findings from the uploaded documents.'
             ]);
           } else {
-            const fn = activeDocument?.filename || 'this document';
+            const fn = activeSession?.file_name || 'this document';
             setSuggestedQuestions([
               `What is the central topic and summary of ${fn}?`,
               `What key numbers, statistics, or metrics are mentioned in ${fn}?`,
@@ -130,20 +149,68 @@ export default function ChatWindow({
     return () => {
       isMounted = false;
     };
-  }, [activeDocId]);
+  }, [effectiveSessionId, isAllDocs, activeSession?.file_id, docCount]);
 
-  const handleClearChat = async () => {
-    if (loading) return;
-    const effectiveId = activeDocId || 'all';
-    try {
-      await axios.delete(`http://localhost:8000/api/documents/${effectiveId}/chat`);
-      setMessages([]);
-    } catch (err) {
-      console.error('Failed to clear chat history:', err);
+  // Global shortcut: Ctrl+N or Cmd+N starts a fresh chat smoothly
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        handleNewChat();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [loading, isResetting, effectiveSessionId]);
+
+  const handleNewChat = async () => {
+    if (loading || isResetting) return;
+    if (onCreateSession) {
+      onCreateSession({
+        scope: isAllDocs ? 'all' : 'file',
+        file_id: activeSession?.file_id,
+        file_name: activeSession?.file_name,
+        title: isAllDocs ? 'New chat' : `Chat: ${activeSession?.file_name || 'Document'}`
+      });
     }
   };
 
+  const handleDeleteChatClick = async () => {
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete the chat history for "${sessionTitle}"? This cannot be undone.`
+    );
+    if (confirmed) {
+      if (onDeleteSession) {
+        onDeleteSession(effectiveSessionId);
+      } else {
+        try {
+          await axios.delete(`http://localhost:8000/api/chats/${effectiveSessionId}`);
+          setMessages([]);
+        } catch (e) {
+          console.error('Delete chat error:', e);
+        }
+      }
+    }
+  };
+
+  const handleStartRename = () => {
+    setEditTitle(sessionTitle);
+    setIsEditingTitle(true);
+  };
+
+  const handleSaveRename = () => {
+    if (editTitle.trim() && onRenameSession) {
+      onRenameSession(effectiveSessionId, editTitle.trim());
+    }
+    setIsEditingTitle(false);
+  };
+
   const handleSend = async (customPrompt) => {
+    if (isFileDeleted) {
+      setError('This file was deleted. You can read the history but cannot ask new questions.');
+      return;
+    }
+
     const qToSend = (customPrompt || question).trim();
     if (!qToSend || loading) return;
 
@@ -153,6 +220,7 @@ export default function ChatWindow({
     const userMessage = {
       role: 'user',
       content: qToSend,
+      text: qToSend,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -164,7 +232,8 @@ export default function ChatWindow({
       const response = await axios.post(
         'http://localhost:8000/api/ask',
         {
-          doc_id: activeDocId || 'all',
+          chat_id: effectiveSessionId,
+          doc_id: activeSession?.file_id || (isAllDocs ? 'all' : effectiveSessionId),
           question: qToSend,
         },
         {
@@ -178,6 +247,7 @@ export default function ChatWindow({
       const botMessage = {
         role: 'assistant',
         content: data.answer || '',
+        text: data.answer || '',
         sources: Array.isArray(data.sources) ? data.sources : [],
         source_documents: Array.isArray(data.source_documents) ? data.source_documents : [],
         source_details: Array.isArray(data.source_details) ? data.source_details : [],
@@ -186,6 +256,7 @@ export default function ChatWindow({
       };
 
       setMessages((prev) => [...prev, botMessage]);
+      onSessionActivity?.();
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || 'Failed to retrieve answer from backend.';
       setError(msg);
@@ -194,7 +265,8 @@ export default function ChatWindow({
         {
           role: 'assistant',
           isError: true,
-          content: `Error querying documents: ${msg}`,
+          content: `Error: ${msg}`,
+          text: `Error: ${msg}`,
           sources: [],
           source_details: [],
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -224,10 +296,9 @@ export default function ChatWindow({
     let targetFilename = filename;
 
     if (!targetDocId || targetDocId === 'all') {
-      if (activeDocId && activeDocId !== 'all') {
-        targetDocId = activeDocId;
-        const currentDoc = documents.find((d) => d.doc_id === targetDocId);
-        if (currentDoc) targetFilename = currentDoc.filename;
+      if (!isAllDocs && activeSession?.file_id) {
+        targetDocId = activeSession.file_id;
+        targetFilename = activeSession.file_name;
       } else if (filename && Array.isArray(documents) && documents.length > 0) {
         const found = documents.find((d) => d.filename === filename);
         if (found) {
@@ -258,71 +329,121 @@ export default function ChatWindow({
 
   return (
     <section className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-sm flex flex-col h-full overflow-hidden relative">
-      {/* Top Banner / Scope Bar */}
-      <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 bg-slate-50/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200/80">
+      {/* Top Header - Fixed Non-Wrapping Header */}
+      <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 bg-slate-50/80 backdrop-blur-md flex items-center justify-between gap-3 overflow-hidden select-none">
+        <div className="min-w-0 flex-1 flex items-center space-x-3">
+          <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200/80 flex-shrink-0 shadow-2xs">
             <Bot className="w-4 h-4" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center space-x-2">
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                Document Q&A Assistant
-              </h2>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80">
-                ChromaDB RRF
-              </span>
+              {isEditingTitle ? (
+                <input
+                  type="text"
+                  value={editTitle}
+                  autoFocus
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveRename();
+                    if (e.key === 'Escape') setIsEditingTitle(false);
+                  }}
+                  onBlur={handleSaveRename}
+                  className="bg-white border border-indigo-400 rounded px-2 py-0.5 text-sm font-bold text-slate-900 focus:outline-none max-w-xs"
+                />
+              ) : (
+                <div className="flex items-center space-x-1.5 min-w-0">
+                  <h2 className="text-sm font-bold text-slate-900 tracking-tight truncate max-w-sm" title={sessionTitle}>
+                    {sessionTitle}
+                  </h2>
+                  <button
+                    onClick={handleStartRename}
+                    className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-200/60 transition-colors"
+                    title="Rename chat"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {isFileDeleted ? (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300 flex-shrink-0">
+                  File deleted • Read-only
+                </span>
+              ) : isAllDocs ? (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 flex-shrink-0">
+                  All files ({docCount} active)
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex-shrink-0 truncate max-w-[140px]">
+                  {activeSession?.file_name}
+                </span>
+              )}
             </div>
-            <p className="text-[11px] text-slate-500">
-              {docCount === 0
-                ? 'No documents uploaded yet • Upload files in Documents tab'
+            <p className="text-[11px] text-slate-500 truncate">
+              {isFileDeleted
+                ? 'File content purged from index & LLM context • Chat thread is preserved'
                 : isAllDocs
-                ? `Searching across all ${docCount} uploaded ${docCount === 1 ? 'document' : 'documents'}`
-                : `Searching specifically in: ${activeDocument?.filename}`}
+                ? `Searching across all active documents (${docCount} ${docCount === 1 ? 'file' : 'files'})`
+                : `Scoped to: ${activeSession?.file_name || sessionTitle}`}
             </p>
           </div>
         </div>
 
-        {/* Search Target Selector & Clear Chat */}
-        <div className="flex items-center space-x-2.5">
-          {docCount > 0 && (
-            <div className="relative">
-              <select
-                value={activeDocId || 'all'}
-                onChange={(e) => onSelectDoc && onSelectDoc(e.target.value)}
-                className="appearance-none bg-white border border-slate-200 hover:border-slate-300 focus:border-indigo-500 rounded-xl pl-3 pr-8 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs focus:outline-none cursor-pointer"
-              >
-                <option value="all">🌐 All Uploaded Documents ({docCount})</option>
-                {documents.map((d) => (
-                  <option key={d.doc_id} value={d.doc_id}>
-                    📄 {d.filename} ({d.chunks} chunks)
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
-          )}
-
+        {/* Fixed Right Control Cluster */}
+        <div className="flex-shrink-0 flex items-center space-x-2">
+          {/* Explicit 'Delete Chat' Button */}
           {messages.length > 0 && (
             <button
-              onClick={handleClearChat}
-              disabled={loading}
-              title="Clear conversation history"
-              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 transition-colors disabled:opacity-50"
+              onClick={handleDeleteChatClick}
+              disabled={loading || isResetting}
+              title={`Permanently delete the chat history for "${sessionTitle}"`}
+              className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-rose-700 hover:text-rose-800 bg-rose-50/80 hover:bg-rose-100 border border-rose-200/90 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-95"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Clear</span>
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden sm:inline">Delete chat</span>
             </button>
           )}
+
+          {/* New Chat Button */}
+          <button
+            onClick={handleNewChat}
+            disabled={loading || isResetting}
+            title="Start a new chat session"
+            className="group relative inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:via-indigo-500 hover:to-blue-500 shadow-xs shadow-indigo-600/25 hover:shadow-md hover:shadow-indigo-500/30 active:scale-95 transition-all duration-300 ease-out cursor-pointer disabled:opacity-50 select-none overflow-hidden"
+          >
+            <Plus className="w-3.5 h-3.5 text-white flex-shrink-0 transition-transform duration-300 ease-out group-hover:rotate-90 group-hover:scale-110" />
+            <span className="tracking-tight whitespace-nowrap">New Chat</span>
+          </button>
         </div>
       </div>
+
+      {/* Read-Only Banner for Soft-Deleted Files */}
+      {isFileDeleted && (
+        <div className="flex-shrink-0 mx-4 sm:mx-6 mt-3 p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 text-xs flex items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300 flex-shrink-0">
+              File deleted
+            </span>
+            <p className="text-[11px] truncate text-amber-900">
+              This file was deleted. You can read the history but cannot ask new questions.
+            </p>
+          </div>
+          <button
+            onClick={handleDeleteChatClick}
+            className="inline-flex items-center space-x-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-white hover:bg-rose-50 border border-rose-200 rounded-lg flex-shrink-0 transition-colors shadow-2xs cursor-pointer active:scale-95"
+          >
+            <Trash2 className="w-3 h-3 text-rose-600" />
+            <span>Delete chat</span>
+          </button>
+        </div>
+      )}
 
       {/* Messages Scroll Area */}
       <div
         ref={chatContainerRef}
         className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6 bg-gradient-to-b from-white via-white to-slate-50/40"
       >
-        {docCount === 0 ? (
+        {docCount === 0 && isAllDocs && messages.length === 0 ? (
           /* Empty State: No Documents Uploaded */
           <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto py-12">
             <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mb-4 shadow-sm">
@@ -352,10 +473,10 @@ export default function ChatWindow({
               <Sparkles className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-slate-900">
-              Ask anything across your {docCount} uploaded {docCount === 1 ? 'file' : 'files'}
+              {isAllDocs ? `Ask anything across your ${docCount} active files` : `Chat about ${sessionTitle}`}
             </h3>
             <p className="text-xs text-slate-500 mt-1 mb-6">
-              The LLM will automatically retrieve top vector excerpts from all uploaded files and synthesize accurate answers with citations.
+              The LLM will automatically retrieve top vector excerpts from active files and synthesize accurate answers with citations.
             </p>
 
             <div className="w-full space-y-2 text-left">
@@ -376,7 +497,7 @@ export default function ChatWindow({
                 <button
                   key={idx}
                   onClick={() => handleSend(prompt)}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-xs text-slate-700 hover:text-indigo-900 transition-all group shadow-2xs active:scale-[0.99]"
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-xs text-slate-700 hover:text-indigo-900 transition-all group shadow-2xs active:scale-[0.99] cursor-pointer"
                 >
                   <span className="truncate pr-2 font-medium">{prompt}</span>
                   <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 transition-colors" />
@@ -411,13 +532,13 @@ export default function ChatWindow({
                 {/* Markdown Rendered Content */}
                 {msg.role === 'assistant' && !msg.isError ? (
                   <div className="prose prose-slate prose-sm max-w-none space-y-2">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown>{msg.content || msg.text || ''}</ReactMarkdown>
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <div className="whitespace-pre-wrap">{msg.content || msg.text || ''}</div>
                 )}
 
-                {/* Sourced Documents / Pages Badges */}
+                {/* Sourced Documents / Pages Badges with Deleted File Marker */}
                 {msg.role === 'assistant' && !msg.isError && (
                   (Array.isArray(msg.source_details) && msg.source_details.length > 0) ||
                   (Array.isArray(msg.sources) && msg.sources.length > 0)
@@ -429,22 +550,39 @@ export default function ChatWindow({
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {Array.isArray(msg.source_details) && msg.source_details.length > 0 ? (
-                        msg.source_details.map((detail, sIdx) => (
-                          <button
-                            key={sIdx}
-                            type="button"
-                            onClick={() => handleOpenSourcePdf(detail.doc_id, detail.page, detail.filename)}
-                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
-                            title={`Open ${detail.filename || 'PDF'} at Page ${detail.page} in PDF viewer`}
-                          >
-                            <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
-                            <span>{detail.filename ? `${detail.filename} • ` : ''}Page {detail.page}</span>
-                            <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 ml-0.5" />
-                          </button>
-                        ))
+                        msg.source_details.map((detail, sIdx) => {
+                          const fid = detail.file_id || detail.doc_id;
+                          const fn = detail.filename || detail.file_name || 'Document';
+                          const isSourceDeleted =
+                            Boolean(detail.is_deleted) ||
+                            (fid && !documents.some((d) => d.doc_id === fid));
+
+                          return isSourceDeleted ? (
+                            <span
+                              key={sIdx}
+                              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200"
+                              title="This file was deleted from active storage"
+                            >
+                              <FileText className="w-3 h-3 text-slate-400" />
+                              <span>{fn} (deleted) • Page {detail.page}</span>
+                            </span>
+                          ) : (
+                            <button
+                              key={sIdx}
+                              type="button"
+                              onClick={() => handleOpenSourcePdf(fid, detail.page, fn)}
+                              className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
+                              title={`Open ${fn} at Page ${detail.page} in PDF viewer`}
+                            >
+                              <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
+                              <span>{fn ? `${fn} • ` : ''}Page {detail.page}</span>
+                              <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 ml-0.5" />
+                            </button>
+                          );
+                        })
                       ) : (
                         msg.sources.map((pageNum, sIdx) => {
-                          let targetDocId = activeDocId !== 'all' ? activeDocId : null;
+                          let targetDocId = !isAllDocs ? activeSession?.file_id : null;
                           let fn = '';
                           if (!targetDocId && Array.isArray(msg.source_documents) && msg.source_documents.length > 0) {
                             const found = documents.find((d) => d.filename === msg.source_documents[0]);
@@ -453,17 +591,12 @@ export default function ChatWindow({
                               fn = found.filename;
                             }
                           }
-                          if (!targetDocId && documents.length > 0) {
-                            targetDocId = documents[0].doc_id;
-                            fn = documents[0].filename;
-                          }
                           return (
                             <button
                               key={sIdx}
                               type="button"
                               onClick={() => handleOpenSourcePdf(targetDocId, pageNum, fn)}
                               className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
-                              title={`Open ${fn || 'PDF'} at Page ${pageNum} in PDF viewer`}
                             >
                               <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
                               <span>{fn ? `${fn} • ` : ''}Page {pageNum}</span>
@@ -477,7 +610,7 @@ export default function ChatWindow({
                 )}
 
                 {/* Sequential Follow-up Questions Suggested by LLM */}
-                {msg.role === 'assistant' && !msg.isError && Array.isArray(msg.suggested_questions) && msg.suggested_questions.length > 0 && (
+                {msg.role === 'assistant' && !msg.isError && Array.isArray(msg.suggested_questions) && msg.suggested_questions.length > 0 && !isFileDeleted && (
                   <div className="mt-3.5 pt-3 border-t border-slate-100">
                     <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-indigo-700 mb-2">
                       <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
@@ -489,9 +622,8 @@ export default function ChatWindow({
                           key={sIdx}
                           type="button"
                           onClick={() => handleSend(seqQ)}
-                          disabled={loading}
-                          className="group w-full flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-slate-50/90 hover:bg-indigo-50/80 border border-slate-200/80 hover:border-indigo-300 text-left text-xs text-slate-700 hover:text-indigo-900 transition-all shadow-2xs active:scale-[0.99] disabled:opacity-50"
-                          title={`Click to ask: "${seqQ}"`}
+                          disabled={loading || isFileDeleted}
+                          className="group w-full flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-slate-50/90 hover:bg-indigo-50/80 border border-slate-200/80 hover:border-indigo-300 text-left text-xs text-slate-700 hover:text-indigo-900 transition-all shadow-2xs active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                         >
                           <span className="truncate pr-2 font-medium">{seqQ}</span>
                           <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform flex-shrink-0" />
@@ -505,11 +637,11 @@ export default function ChatWindow({
                 <div className={`mt-2.5 flex items-center justify-between text-[10px] ${
                   msg.role === 'user' ? 'text-indigo-100' : 'text-slate-400'
                 }`}>
-                  <span>{msg.time}</span>
+                  <span>{msg.time || msg.timestamp}</span>
                   {msg.role === 'assistant' && !msg.isError && (
                     <button
-                      onClick={() => copyToClipboard(msg.content, idx)}
-                      className="hover:text-slate-700 transition-colors flex items-center space-x-1"
+                      onClick={() => copyToClipboard(msg.content || msg.text, idx)}
+                      className="hover:text-slate-700 transition-colors flex items-center space-x-1 cursor-pointer"
                       title="Copy response"
                     >
                       {copiedIdx === idx ? (
@@ -546,7 +678,7 @@ export default function ChatWindow({
             <div className="bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-4 text-xs text-slate-700 shadow-xs space-y-1.5">
               <div className="flex items-center space-x-2 text-indigo-600 font-semibold">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Searching ChromaDB Across Uploaded Files...</span>
+                <span>Searching ChromaDB Across Active Files...</span>
               </div>
               <p className="text-[11px] text-slate-400">
                 Retrieving top vector excerpts using reciprocal rank fusion and synthesizing answer.
@@ -558,7 +690,7 @@ export default function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Form */}
+      {/* Input Form with Disabled State for Deleted Files */}
       <div className="flex-shrink-0 p-4 border-t border-slate-200/90 bg-white/95 backdrop-blur-md">
         <form
           onSubmit={(e) => {
@@ -573,20 +705,22 @@ export default function ChatWindow({
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={loading}
+            disabled={loading || isFileDeleted}
             placeholder={
-              isAllDocs
+              isFileDeleted
+                ? 'This file was deleted. You can read the history but cannot ask new questions.'
+                : isAllDocs
                 ? 'Ask a question across all uploaded documents... (Enter to send, Shift+Enter for newline)'
-                : `Ask a question about ${activeDocument?.filename || 'this document'}... (Enter to send, Shift+Enter for newline)`
+                : `Ask a question about ${sessionTitle}... (Enter to send, Shift+Enter for newline)`
             }
-            className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 custom-scrollbar rounded-xl px-4 py-3 pr-24 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all resize-none min-h-[52px] max-h-36 overflow-y-auto"
+            className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 custom-scrollbar rounded-xl px-4 py-3 pr-24 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all resize-none min-h-[52px] max-h-36 overflow-y-auto disabled:opacity-60 disabled:cursor-not-allowed"
           />
 
           <div className="absolute right-2.5 bottom-2.5 flex items-center">
             <button
               type="submit"
-              disabled={!question.trim() || loading}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-all active:scale-95"
+              disabled={!question.trim() || loading || isFileDeleted}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-all active:scale-95 cursor-pointer"
             >
               {loading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -601,9 +735,13 @@ export default function ChatWindow({
         </form>
         <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 px-1">
           <span>
-            {isAllDocs ? 'Searching: All indexed files in ChromaDB' : `Scope: ${activeDocument?.filename}`}
+            {isFileDeleted
+              ? 'Status: File deleted (Read-only chat archive)'
+              : isAllDocs
+              ? 'Searching: All active indexed files in ChromaDB'
+              : `Scope: ${sessionTitle}`}
           </span>
-          <span>Shift+Enter for newline</span>
+          <span>{isFileDeleted ? 'Chat is read-only' : 'Shift+Enter for newline'}</span>
         </div>
       </div>
     </section>

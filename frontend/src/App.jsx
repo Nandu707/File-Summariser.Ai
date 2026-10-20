@@ -6,7 +6,13 @@ import { ChatPage, DocumentsPage } from './pages';
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'documents'
   const [documents, setDocuments] = useState([]);
-  const [activeDocId, setActiveDocId] = useState('all'); // 'all' or specific doc_id
+  const [activeDocId, setActiveDocId] = useState(() => {
+    try {
+      return localStorage.getItem('task_rag_active_doc_id') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [backendStatus, setBackendStatus] = useState('checking'); // 'healthy' | 'checking' | 'error'
   const [isAnswering, setIsAnswering] = useState(false);
 
@@ -35,13 +41,16 @@ export default function App() {
 
   const handleSelectDoc = (docOrId) => {
     if (isAnswering) return;
+    let targetId = 'all';
     if (typeof docOrId === 'string') {
-      setActiveDocId(docOrId);
+      targetId = docOrId;
     } else if (docOrId && docOrId.doc_id) {
-      setActiveDocId(docOrId.doc_id);
-    } else {
-      setActiveDocId('all');
+      targetId = docOrId.doc_id;
     }
+    setActiveDocId(targetId);
+    try {
+      localStorage.setItem('task_rag_active_doc_id', targetId);
+    } catch (e) {}
   };
 
   const handleDocumentCountChange = (count) => {

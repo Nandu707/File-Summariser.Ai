@@ -6,21 +6,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-STRICT_CONTEXT_SYSTEM_PROMPT = """You are a helpful and accurate document question-answering assistant.
-Your task is to answer the user's question based on the provided document context excerpts below.
-
-CRITICAL RULES:
-1. Base your answer on the provided context excerpts below.
-2. If the user asks for a summary, overview, or explanation of the document, provide a clear, concise summary using the facts and points present in the excerpts.
-3. If the user asks a specific question, find the relevant information in the excerpts and answer it directly.
-4. Do NOT include page numbers, source citations, or page references (e.g., do NOT write "(Page 1)" or "Page 2") in your answer. Present facts directly and cleanly.
-5. Keep your answer factual, direct, and concise.
-6. Always try your best to answer from the context. Even if the context is only partially relevant, extract and present whatever useful information is available.
-7. Only say you cannot find the answer if the context excerpts contain absolutely no information related to the question at all.
-"""
+STRICT_CONTEXT_SYSTEM_PROMPT = """You are given content from multiple uploaded files, each labelled with its file name. Answer using information from ALL relevant files. If a question spans several files, combine them. State which file each part of the answer comes from. If the answer is not in any uploaded file, say so instead of guessing."""
 
 class LLMService:
-    GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-flash-latest"]
+    GEMINI_MODELS = [
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-3.5-flash"
+    ]
 
     def __init__(self, gemini_api_key: Optional[str] = None, openai_api_key: Optional[str] = None):
         self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
@@ -29,10 +22,12 @@ class LLMService:
         self._openai_client = None
 
     def _get_gemini_client(self):
-        if self._gemini_client is None and self.gemini_api_key:
+        current_key = self.gemini_api_key or os.getenv("GEMINI_API_KEY")
+        if self._gemini_client is None and current_key:
             try:
                 from google import genai
-                self._gemini_client = genai.Client(api_key=self.gemini_api_key)
+                self._gemini_client = genai.Client(api_key=current_key)
+                self.gemini_api_key = current_key
             except Exception as e:
                 print(f"[LLMService] Error initializing Gemini client: {e}")
         return self._gemini_client
@@ -47,7 +42,7 @@ class LLMService:
         return self._openai_client
 
     def format_context(self, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
-        """Formats top 4 chunks with filename and page metadata into structured context."""
+        """Formats chunks with filename and page metadata into structured context."""
         context_parts = []
         for idx, chunk in enumerate(chunks):
             page_num = "Unknown"
@@ -59,23 +54,52 @@ class LLMService:
             context_parts.append(f"[Excerpt {idx + 1} | {file_label}Page {page_num}]:\n{chunk.strip()}")
         return "\n\n".join(context_parts)
 
-    def generate_answer(self, question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
+    def generate_answer(
+        self,
+        question: str,
+        chunks: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
         """
         Passes retrieved chunks to the LLM with a strict context-only prompt,
         returning the answer. Primary: Google Gemini; Secondary: OpenAI; Fallback: offline grounded.
+        Includes leak-free conversation history if provided.
         """
         if not chunks:
-            return "I cannot find the answer in the provided document context."
+            return "The answer is not in any uploaded file."
 
         context_str = self.format_context(chunks, metadatas)
 
+        # Build list of available files to pass to LLM
+        available_files = []
+        if metadatas:
+            for m in metadatas:
+                if isinstance(m, dict):
+                    fn = m.get("filename")
+                    if fn and fn not in available_files:
+                        available_files.append(fn)
+        files_list_str = ", ".join(available_files) if available_files else "None"
+
+        # Format conversation history if available
+        history_str = ""
+        if history and len(history) > 0:
+            hist_parts = []
+            for h in history[-6:]: # Limit to last 6 turns for prompt efficiency
+                role = "User" if h.get("role") == "user" else "Assistant"
+                hist_parts.append(f"{role}: {h.get('content', '').strip()}")
+            if hist_parts:
+                history_str = "\n\n--- PREVIOUS CONVERSATION (ACTIVE FILES ONLY) ---\n" + "\n".join(hist_parts) + "\n--- END CONVERSATION ---\n"
+
         prompt = (
             f"{STRICT_CONTEXT_SYSTEM_PROMPT}\n\n"
-            f"--- PROVIDED CONTEXT (TOP 4 CHUNKS) ---\n"
+            f"Available uploaded files: {files_list_str}\n\n"
+            f"--- PROVIDED FILE EXCERPTS ---\n"
             f"{context_str}\n"
-            f"--- END OF CONTEXT ---\n\n"
+            f"--- END OF EXCERPTS ---\n"
+            f"{history_str}\n"
             f"Question: {question}\n\n"
-            f"Strict Context-Only Answer:"
+            f"Answer:"
         )
 
         ans = None
@@ -108,12 +132,15 @@ class LLMService:
             try:
                 from openai import OpenAI
                 client = OpenAI(api_key=self.openai_api_key)
+                messages_payload = [{"role": "system", "content": STRICT_CONTEXT_SYSTEM_PROMPT}]
+                if history:
+                    for h in history[-6:]:
+                        messages_payload.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+                messages_payload.append({"role": "user", "content": f"Context:\n{context_str}\n\nQuestion: {question}"})
+
                 res = client.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": STRICT_CONTEXT_SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Context:\n{context_str}\n\nQuestion: {question}"}
-                    ],
+                    messages=messages_payload,
                     temperature=0.0,
                 )
                 content = res.choices[0].message.content

@@ -67,8 +67,17 @@ class RAGService:
 
     def delete_document(self, doc_id: str) -> bool:
         try:
-            # Delete chunks from ChromaDB
-            self.collection.delete(where={"doc_id": doc_id})
+            # Delete chunks from ChromaDB by where clause and by matching ids
+            try:
+                matches = self.collection.get(where={"doc_id": doc_id})
+                if matches and matches.get("ids"):
+                    self.collection.delete(ids=matches["ids"])
+            except Exception:
+                pass
+            try:
+                self.collection.delete(where={"doc_id": doc_id})
+            except Exception:
+                pass
             reg = self._get_registry()
             if doc_id in reg:
                 del reg[doc_id]
@@ -302,7 +311,7 @@ class RAGService:
                     f"Question: {question}\n\n"
                     f"Answer:"
                 )
-                for model_name in ["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
+                for model_name in ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-flash-latest"]:
                     try:
                         response = client.models.generate_content(
                             model=model_name,

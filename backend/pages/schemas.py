@@ -2,11 +2,24 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 class AskRequest(BaseModel):
+    chat_id: Optional[str] = Field(
+        default=None,
+        description="The chat session ID"
+    )
     doc_id: Optional[str] = Field(
         default="all",
         description="The unique ID of the indexed document or 'all' to search across all uploaded files"
     )
     question: str = Field(..., description="The user's question regarding the documents")
+
+class CreateChatRequest(BaseModel):
+    scope: Optional[str] = Field(default="all", description="'all' or 'file'")
+    file_id: Optional[str] = Field(default=None, description="The file ID for single-file chats")
+    file_name: Optional[str] = Field(default=None, description="The file name")
+    title: Optional[str] = Field(default=None, description="Custom chat session title")
+
+class RenameChatRequest(BaseModel):
+    title: str = Field(..., description="The new title for the chat session")
 
 class AskResponse(BaseModel):
     answer: str

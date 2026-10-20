@@ -18,34 +18,28 @@ DEFAULT_VECTOR_DB_DIR = Path(__file__).resolve().parent.parent.parent.parent / "
 VECTOR_DB_DIR = Path(os.getenv("CHROMA_PERSIST_DIRECTORY", str(DEFAULT_VECTOR_DB_DIR)))
 
 
+def _find_project_root() -> Path:
+    current = Path(__file__).resolve().parent
+    for _ in range(6):
+        if (current / "package.json").exists() or (current / ".git").exists():
+            return current
+        if current.parent == current:
+            break
+        current = current.parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
 class VectorStoreService:
     def __init__(self, persist_dir: Optional[str] = None):
-        # Resolve paths relative to the source file location for consistency
-        # regardless of the current working directory when the server starts
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        backend_root = Path(__file__).resolve().parent.parent.parent
+        # Resolve canonical project root vector_db (e:\Task-RAG\vector_db)
+        project_root = _find_project_root()
         root_vdb = project_root / "vector_db"
-        backend_vdb = backend_root / "vector_db"
+        backend_vdb = project_root / "backend" / "vector_db"
 
         if persist_dir:
             self.persist_dir = Path(persist_dir).resolve()
         else:
-            # Always prefer the project root vector_db since that's where
-            # documents are indexed. This avoids the CWD-dependent bug where
-            # "./vector_db" in .env resolves to different directories depending
-            # on where uvicorn is launched from.
-            if root_vdb.exists() and (root_vdb / "chroma.sqlite3").exists():
-                self.persist_dir = root_vdb.resolve()
-            elif backend_vdb.exists() and (backend_vdb / "chroma.sqlite3").exists():
-                self.persist_dir = backend_vdb.resolve()
-            elif os.getenv("CHROMA_PERSIST_DIRECTORY"):
-                env_dir = Path(os.getenv("CHROMA_PERSIST_DIRECTORY"))
-                if env_dir.is_absolute():
-                    self.persist_dir = env_dir.resolve()
-                else:
-                    self.persist_dir = (project_root / env_dir).resolve()
-            else:
-                self.persist_dir = root_vdb.resolve()
+            self.persist_dir = root_vdb.resolve()
 
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.files_dir = self.persist_dir / "files"
@@ -68,6 +62,51 @@ class VectorStoreService:
 
         self._ensure_registry()
         self._sync_legacy_collections()
+        self._sync_backend_db_if_needed(backend_vdb)
+
+    def _sync_backend_db_if_needed(self, backend_vdb: Path):
+        """Merges any chunks or documents from legacy backend/vector_db into canonical vector_db."""
+        if not backend_vdb.exists() or backend_vdb.resolve() == self.persist_dir.resolve():
+            return
+        try:
+            # Sync registry entries
+            bak_reg_file = backend_vdb / "documents_registry.json"
+            if bak_reg_file.exists():
+                with open(bak_reg_file, "r", encoding="utf-8") as f:
+                    bak_reg = json.load(f)
+                if bak_reg:
+                    reg = self._get_registry()
+                    merged = {**bak_reg, **reg}
+                    if len(merged) > len(reg):
+                        self._save_registry(merged)
+
+            # Sync ChromaDB chunks
+            if (backend_vdb / "chroma.sqlite3").exists():
+                bak_client = chromadb.PersistentClient(path=str(backend_vdb))
+                for col_name in ["task_rag_vector_store", "task_rag_documents"]:
+                    try:
+                        b_col = bak_client.get_collection(col_name)
+                        if b_col.count() > 0:
+                            data = b_col.get()
+                            existing = set(self.collection.get(include=[])["ids"])
+                            new_ids = []
+                            new_docs = []
+                            new_metas = []
+                            for cid, d, m in zip(data["ids"], data["documents"], data["metadatas"]):
+                                if cid not in existing:
+                                    new_ids.append(cid)
+                                    new_docs.append(d)
+                                    new_metas.append(m)
+                            for i in range(0, len(new_ids), 100):
+                                self.collection.add(
+                                    ids=new_ids[i:i + 100],
+                                    documents=new_docs[i:i + 100],
+                                    metadatas=new_metas[i:i + 100]
+                                )
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[VectorStore] Notice syncing legacy backend vector_db: {e}")
 
     def _sync_legacy_collections(self):
         """Auto-migrates any chunks stored in legacy task_rag_documents collection."""
@@ -107,15 +146,64 @@ class VectorStoreService:
         except Exception as e:
             print(f"[VectorStore] Warning creating registry file: {e}")
 
+    def _reconcile_registry_with_chromadb(self, reg: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-reconciles ChromaDB chunks with the registry so any indexed file is always recognized."""
+        try:
+            total_chunks = self.collection.count()
+            if total_chunks == 0:
+                return reg
+            res = self.collection.get(include=["metadatas"])
+            metas = res.get("metadatas", [])
+            if not metas:
+                return reg
+
+            from collections import defaultdict
+            doc_chunks = defaultdict(int)
+            doc_filenames = {}
+            doc_pages = defaultdict(set)
+
+            for m in metas:
+                if isinstance(m, dict) and "doc_id" in m:
+                    d_id = m["doc_id"]
+                    doc_chunks[d_id] += 1
+                    if "filename" in m and d_id not in doc_filenames:
+                        doc_filenames[d_id] = m["filename"]
+                    if "page" in m:
+                        try:
+                            doc_pages[d_id].add(int(m["page"]))
+                        except Exception:
+                            pass
+
+            changed = False
+            for d_id, count in doc_chunks.items():
+                if d_id not in reg:
+                    fn = doc_filenames.get(d_id, f"{d_id}.pdf")
+                    reg[d_id] = {
+                        "doc_id": d_id,
+                        "filename": fn,
+                        "chunks": count,
+                        "pages_count": max(1, len(doc_pages[d_id])),
+                        "uploaded_at": "2026-10-15T10:00:00",
+                        "suggested_questions": []
+                    }
+                    changed = True
+
+            if changed:
+                self._save_registry(reg)
+        except Exception as e:
+            print(f"[VectorStore] Notice during registry reconciliation: {e}")
+        return reg
+
     def _get_registry(self) -> Dict[str, Any]:
         reg_file = self.persist_dir / "documents_registry.json"
+        reg = {}
         if reg_file.exists():
             try:
                 with open(reg_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    reg = json.load(f)
             except Exception:
-                pass
-        return {}
+                reg = {}
+        return self._reconcile_registry_with_chromadb(reg)
 
     def _save_registry(self, registry: Dict[str, Any]):
         try:
@@ -744,115 +832,278 @@ class VectorStoreService:
     def retrieve_top_chunks(self, doc_id: Optional[str], question: str, n_results: int = 4) -> Tuple[List[str], List[Dict[str, Any]], List[int]]:
         """
         High-Accuracy Hybrid Retrieval:
-        1. Retrieves candidate chunks using dense ChromaDB vector search across a specific document or all uploaded documents.
-        2. Ranks candidates using Reciprocal Rank Fusion (RRF) combining vector distance and lexical score.
-        3. Suppresses near-duplicate chunks for diverse and complete context.
-        4. Returns the top 4 most accurate chunks with source page numbers.
+        1. Dynamically searches across all uploaded files or a specific document.
+        2. When searching all documents (is_all_docs=True):
+           - Gathers candidates both globally and on a per-document basis from every registered document
+             so newly uploaded files are NEVER crowded out by older large files.
+           - Matches document filename mentions and recency intents.
+           - Applies Reciprocal Rank Fusion (RRF) and lexical BM25-style scoring.
+           - Ensures balanced multi-document representation for complete, holistic answers.
+        3. Suppresses near-duplicate chunks for diverse context.
+        4. Returns top chunks with complete page and filename metadata.
         """
         is_all_docs = not doc_id or str(doc_id).strip().lower() in ("all", "*", "")
+        reg = self._get_registry()
 
         total_chunks = self.collection.count()
         if total_chunks == 0:
             return [], [], []
 
-        candidate_k = min(32, total_chunks)
-        cand_chunks: List[str] = []
-        cand_metas: List[Dict[str, Any]] = []
-        cand_distances: List[float] = []
+        cand_pool: Dict[Tuple[str, int], Dict[str, Any]] = {}
 
+        # Pre-compute query embedding ONCE so ChromaDB doesn't re-embed the question 9+ times
+        query_emb = None
         try:
-            query_kwargs = {
-                "query_texts": [question],
-                "n_results": candidate_k
-            }
-            if not is_all_docs:
-                query_kwargs["where"] = {"doc_id": doc_id}
+            if hasattr(self.collection, "_embedding_function") and self.collection._embedding_function:
+                embs = self.collection._embedding_function([question])
+                if embs and len(embs) > 0:
+                    query_emb = embs[0]
+        except Exception:
+            pass
 
-            query_res = self.collection.query(**query_kwargs)
-            cand_chunks = query_res.get("documents", [[]])[0]
-            cand_metas = query_res.get("metadatas", [[]])[0]
-            cand_distances = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
-        except Exception as query_err:
-            print(f"[VectorStore] Dense query fallback notice: {query_err}")
+        base_query_args = {"query_embeddings": [query_emb]} if query_emb is not None else {"query_texts": [question]}
 
-        # Fallback if query returned empty but document has chunks
-        if not cand_chunks and not is_all_docs:
+        if is_all_docs and len(reg) > 1:
+            # --- MULTI-DOCUMENT BALANCED RETRIEVAL ---
+            # 1. Global ANN Search across entire collection
+            global_k = min(32, total_chunks)
             try:
-                fb = self.collection.get(where={"doc_id": doc_id}, limit=candidate_k)
-                if fb and fb.get("documents"):
-                    cand_chunks = fb["documents"]
-                    cand_metas = fb.get("metadatas", [])
-                    cand_distances = []
-            except Exception:
-                pass
+                g_res = self.collection.query(**base_query_args, n_results=global_k)
+                g_docs = g_res.get("documents", [[]])[0]
+                g_metas = g_res.get("metadatas", [[]])[0]
+                g_dists = g_res.get("distances", [[]])[0] if "distances" in g_res and g_res["distances"] else []
+                for r_idx, (c, m) in enumerate(zip(g_docs, g_metas)):
+                    d_id = m.get("doc_id", "")
+                    c_idx = int(m.get("chunk_index", r_idx))
+                    k = (d_id, c_idx)
+                    dist = g_dists[r_idx] if r_idx < len(g_dists) else 1.0
+                    cand_pool[k] = {
+                        "chunk": c,
+                        "meta": m,
+                        "vector_rank": r_idx + 1,
+                        "dist": dist
+                    }
+            except Exception as ge:
+                print(f"[VectorStore] Global query notice: {ge}")
 
-        if not cand_chunks:
+            # 2. Guaranteed Per-Document Candidate Gathering (Ensures newly uploaded files are ALWAYS evaluated)
+            for d_id, d_info in reg.items():
+                doc_chunk_cnt = d_info.get("chunks", 6)
+                doc_k = min(6, doc_chunk_cnt) if doc_chunk_cnt > 0 else 6
+                try:
+                    d_res = self.collection.query(
+                        **base_query_args,
+                        n_results=doc_k,
+                        where={"doc_id": d_id}
+                    )
+                    d_docs = d_res.get("documents", [[]])[0]
+                    d_metas = d_res.get("metadatas", [[]])[0]
+                    d_dists = d_res.get("distances", [[]])[0] if "distances" in d_res and d_res["distances"] else []
+                    for r_idx, (c, m) in enumerate(zip(d_docs, d_metas)):
+                        c_idx = int(m.get("chunk_index", r_idx))
+                        k = (d_id, c_idx)
+                        dist = d_dists[r_idx] if r_idx < len(d_dists) else 1.0
+                        if k in cand_pool:
+                            cand_pool[k]["vector_rank"] = min(cand_pool[k]["vector_rank"], r_idx + 1)
+                            cand_pool[k]["dist"] = min(cand_pool[k]["dist"], dist)
+                        else:
+                            cand_pool[k] = {
+                                "chunk": c,
+                                "meta": m,
+                                "vector_rank": r_idx + 1 + 5,
+                                "dist": dist
+                            }
+                except Exception as de:
+                    # Direct fetch fallback if query had issue
+                    try:
+                        fb = self.collection.get(where={"doc_id": d_id}, limit=doc_k)
+                        if fb and fb.get("documents"):
+                            for r_idx, (c, m) in enumerate(zip(fb["documents"], fb.get("metadatas", []))):
+                                c_idx = int(m.get("chunk_index", r_idx))
+                                k = (d_id, c_idx)
+                                if k not in cand_pool:
+                                    cand_pool[k] = {
+                                        "chunk": c,
+                                        "meta": m,
+                                        "vector_rank": 20 + r_idx,
+                                        "dist": 1.0
+                                    }
+                    except Exception:
+                        pass
+        else:
+            # --- SINGLE DOCUMENT OR SINGLE-DOC REGISTRY RETRIEVAL ---
+            candidate_k = min(32, total_chunks)
+            try:
+                query_kwargs = {
+                    **base_query_args,
+                    "n_results": candidate_k
+                }
+                if not is_all_docs:
+                    query_kwargs["where"] = {"doc_id": doc_id}
+
+                query_res = self.collection.query(**query_kwargs)
+                q_docs = query_res.get("documents", [[]])[0]
+                q_metas = query_res.get("metadatas", [[]])[0]
+                q_dists = query_res.get("distances", [[]])[0] if "distances" in query_res and query_res["distances"] else []
+
+                for r_idx, (c, m) in enumerate(zip(q_docs, q_metas)):
+                    d_id = m.get("doc_id", "")
+                    c_idx = int(m.get("chunk_index", r_idx))
+                    k = (d_id, c_idx)
+                    dist = q_dists[r_idx] if r_idx < len(q_dists) else 1.0
+                    cand_pool[k] = {
+                        "chunk": c,
+                        "meta": m,
+                        "vector_rank": r_idx + 1,
+                        "dist": dist
+                    }
+            except Exception as query_err:
+                print(f"[VectorStore] Query notice: {query_err}")
+
+            # Fallback if specific document returned empty
+            if not cand_pool and not is_all_docs:
+                try:
+                    fb = self.collection.get(where={"doc_id": doc_id}, limit=candidate_k)
+                    if fb and fb.get("documents"):
+                        for r_idx, (c, m) in enumerate(zip(fb["documents"], fb.get("metadatas", []))):
+                            c_idx = int(m.get("chunk_index", r_idx))
+                            k = (doc_id, c_idx)
+                            cand_pool[k] = {
+                                "chunk": c,
+                                "meta": m,
+                                "vector_rank": r_idx + 1,
+                                "dist": 1.0
+                            }
+                except Exception:
+                    pass
+
+        if not cand_pool:
             return [], [], []
 
-        # If document has <= n_results chunks, return directly
-        if len(cand_chunks) <= n_results:
-            final_chunks = cand_chunks
-            final_metas = cand_metas
+        # --- SCORING CANDIDATES WITH HYBRID RRF + LEXICAL + DOCUMENT INTENT ---
+        q_lower = question.lower()
+        scored_candidates = []
+
+        # Find latest uploaded doc_id for recency intent
+        latest_doc_id = None
+        if reg:
+            sorted_by_date = sorted(reg.values(), key=lambda x: x.get("uploaded_at", ""), reverse=True)
+            if sorted_by_date:
+                latest_doc_id = sorted_by_date[0].get("doc_id")
+
+        has_recency_intent = any(w in q_lower for w in ["new", "latest", "recent", "just uploaded", "newly"])
+        has_multi_doc_intent = any(w in q_lower for w in ["all", "each", "both", "every", "compare", "summarize", "files", "documents", "overview"])
+
+        for item in cand_pool.values():
+            chunk = item["chunk"]
+            meta = item["meta"]
+            rank_idx = item["vector_rank"] - 1
+            dist = item["dist"]
+            curr_doc_id = meta.get("doc_id", "")
+            curr_fn = (meta.get("filename") or "").lower()
+
+            # 1. RRF Vector Score: 1 / (60 + rank)
+            rrf_vector = 1.0 / (60.0 + (rank_idx + 1))
+
+            # 2. Distance similarity
+            sim = max(0.0, 1.0 - dist) if dist <= 1.0 else (1.0 / (1.0 + rank_idx))
+
+            # 3. Lexical keyword score
+            kw_score = self._compute_keyword_score(question, chunk)
+
+            # 4. Filename / Document Mention Boost
+            fn_boost = 0.0
+            if curr_fn:
+                fn_clean = re.sub(r"\.[a-z0-9]+$", "", curr_fn)
+                fn_parts = [p for p in re.split(r"[\s_\-\.]+", fn_clean) if len(p) > 2]
+                for part in fn_parts:
+                    if part in q_lower:
+                        fn_boost += 6.0
+                if fn_clean in q_lower or curr_fn in q_lower:
+                    fn_boost += 14.0
+
+            # 5. Boost newest file if recency intent present
+            recency_boost = 0.0
+            if has_recency_intent and curr_doc_id == latest_doc_id:
+                recency_boost = 8.0
+
+            total_score = (rrf_vector * 100.0) + (sim * 10.0) + (kw_score * 5.0) + fn_boost + recency_boost
+
+            scored_candidates.append({
+                "chunk": chunk,
+                "meta": meta,
+                "score": total_score,
+                "doc_id": curr_doc_id
+            })
+
+        # Sort all candidates by total score descending
+        scored_candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        # Determine effective target chunk count
+        # In multi-document search with multiple files, expand to 6 chunks for richer cross-document context
+        if is_all_docs and len(reg) > 1:
+            target_n = max(n_results, min(6, len(reg) * 2))
         else:
-            # Hybrid Re-ranking: Combine Vector Rank and Lexical Relevance
-            scored_candidates = []
-            for rank_idx, (chunk, meta) in enumerate(zip(cand_chunks, cand_metas)):
-                # RRF Vector Score: 1 / (60 + rank)
-                rrf_vector = 1.0 / (60.0 + (rank_idx + 1))
+            target_n = n_results
 
-                # Distance score (if Chroma returned cosine distance: smaller distance = more similar)
-                if cand_distances and rank_idx < len(cand_distances):
-                    dist = cand_distances[rank_idx]
-                    sim = max(0.0, 1.0 - dist)
-                else:
-                    sim = 1.0 / (1.0 + rank_idx)
+        # Multi-document diversity-aware selection:
+        # Prevent any single document from starving others if multiple documents are uploaded
+        selected_candidates = []
+        selected_tokens_list = []
+        doc_counts: Dict[str, int] = {}
+        max_per_doc = max(2, (target_n // len(reg)) + 1) if (is_all_docs and len(reg) > 1 and has_multi_doc_intent) else target_n
 
-                # Lexical keyword score
-                kw_score = self._compute_keyword_score(question, chunk)
+        # Pass 1: Select top candidates respecting document balance and deduplication
+        for cand in scored_candidates:
+            c_doc = cand["doc_id"]
+            if doc_counts.get(c_doc, 0) >= max_per_doc:
+                continue
 
-                # Combined Hybrid Score
-                total_score = (rrf_vector * 100.0) + (sim * 10.0) + (kw_score * 5.0)
-
-                scored_candidates.append({
-                    "chunk": chunk,
-                    "meta": meta,
-                    "score": total_score
-                })
-
-            # Sort by total score descending
-            scored_candidates.sort(key=lambda x: x["score"], reverse=True)
-
-            # Deduplication: suppress near-duplicates (>75% token overlap) to ensure rich context
-            selected_candidates = []
-            selected_tokens_list = []
-
-            for cand in scored_candidates:
-                cand_tokens = set(re.findall(r"\w+", cand["chunk"].lower()))
-                is_duplicate = False
-                for prev_tokens in selected_tokens_list:
-                    intersection = len(cand_tokens.intersection(prev_tokens))
-                    union = len(cand_tokens.union(prev_tokens))
-                    if union > 0 and (intersection / union) > 0.75:
-                        is_duplicate = True
-                        break
-
-                if not is_duplicate or len(selected_candidates) + (len(scored_candidates) - scored_candidates.index(cand)) <= n_results:
-                    selected_candidates.append(cand)
-                    selected_tokens_list.append(cand_tokens)
-
-                if len(selected_candidates) == n_results:
+            cand_tokens = set(re.findall(r"\w+", cand["chunk"].lower()))
+            is_dup = False
+            for prev_tokens in selected_tokens_list:
+                intersection = len(cand_tokens.intersection(prev_tokens))
+                union = len(cand_tokens.union(prev_tokens))
+                if union > 0 and (intersection / union) > 0.75:
+                    is_dup = True
                     break
 
-            # If deduplication was too aggressive, fill up to n_results
-            if len(selected_candidates) < n_results:
-                for cand in scored_candidates:
-                    if cand not in selected_candidates:
+            if not is_dup:
+                selected_candidates.append(cand)
+                selected_tokens_list.append(cand_tokens)
+                doc_counts[c_doc] = doc_counts.get(c_doc, 0) + 1
+
+            if len(selected_candidates) == target_n:
+                break
+
+        # Pass 2: Fill remaining slots if document balancing was restrictive
+        if len(selected_candidates) < target_n:
+            for cand in scored_candidates:
+                if cand not in selected_candidates:
+                    cand_tokens = set(re.findall(r"\w+", cand["chunk"].lower()))
+                    is_dup = False
+                    for prev_tokens in selected_tokens_list:
+                        intersection = len(cand_tokens.intersection(prev_tokens))
+                        union = len(cand_tokens.union(prev_tokens))
+                        if union > 0 and (intersection / union) > 0.75:
+                            is_dup = True
+                            break
+                    if not is_dup:
                         selected_candidates.append(cand)
-                        if len(selected_candidates) == n_results:
+                        selected_tokens_list.append(cand_tokens)
+                        if len(selected_candidates) == target_n:
                             break
 
-            final_chunks = [c["chunk"] for c in selected_candidates]
-            final_metas = [c["meta"] for c in selected_candidates]
+        # Pass 3: Ultimate fill
+        if len(selected_candidates) < target_n:
+            for cand in scored_candidates:
+                if cand not in selected_candidates:
+                    selected_candidates.append(cand)
+                    if len(selected_candidates) == target_n:
+                        break
+
+        final_chunks = [c["chunk"] for c in selected_candidates]
+        final_metas = [c["meta"] for c in selected_candidates]
 
         # Extract sorted unique page numbers: list[int]
         raw_pages = []
