@@ -17,14 +17,12 @@ if sys.platform.startswith("win"):
     except Exception:
         pass
 
-# Ensure local backend path has highest priority in sys.path
+# Ensure local backend path and app services are in sys.path
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent
-for p in [str(ROOT_DIR), str(BASE_DIR)]:
-    if p in sys.path:
-        sys.path.remove(p)
-sys.path.insert(0, str(ROOT_DIR))
-sys.path.insert(0, str(BASE_DIR))
+for p in [str(BASE_DIR), str(ROOT_DIR), str(BASE_DIR / "app"), str(ROOT_DIR / "app")]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 load_dotenv()
 
@@ -53,24 +51,25 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize Background Scheduler for Daily Automatic Chat Cleanup
-try:
-    from apscheduler.schedulers.background import BackgroundScheduler
-    scheduler = BackgroundScheduler(daemon=True)
-    def run_scheduled_cleanup():
-        try:
-            retention_days = int(os.getenv("CHAT_RETENTION_DAYS", "30"))
-            purged = chat_history.cleanup_old_chats(retention_days=retention_days)
-            print(f"[Scheduler] Scheduled chat cleanup: purged {purged} old sessions (retention: {retention_days} days).")
-        except Exception as se:
-            print(f"[Scheduler] Notice during chat cleanup: {se}")
+# Background scheduler for daily automatic chat cleanup (only for long-running servers, not serverless Vercel)
+if not os.getenv("VERCEL") and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        scheduler = BackgroundScheduler(daemon=True)
+        def run_scheduled_cleanup():
+            try:
+                retention_days = int(os.getenv("CHAT_RETENTION_DAYS", "30"))
+                if chat_history and hasattr(chat_history, "cleanup_old_chats"):
+                    purged = chat_history.cleanup_old_chats(retention_days=retention_days)
+                    print(f"[Scheduler] Scheduled chat cleanup: purged {purged} old sessions (retention: {retention_days} days).")
+            except Exception as se:
+                print(f"[Scheduler] Notice during chat cleanup: {se}")
 
-    scheduler.add_job(run_scheduled_cleanup, 'interval', hours=24)
-    scheduler.start()
-    # Trigger initial cleanup run asynchronously
-    run_scheduled_cleanup()
-except Exception as sched_err:
-    print(f"[Scheduler] Notice initializing APScheduler: {sched_err}")
+        scheduler.add_job(run_scheduled_cleanup, 'interval', hours=24)
+        scheduler.start()
+        run_scheduled_cleanup()
+    except Exception as sched_err:
+        print(f"[Scheduler] Notice initializing APScheduler: {sched_err}")
 
 # CORS Configuration
 cors_origins_env = os.getenv("CORS_ORIGIN", "http://localhost:5173")
@@ -93,11 +92,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Startup logging for debugging
-print(f"[startup] Vector DB path: {vector_store.persist_dir}")
-print(f"[startup] Collection: {vector_store.collection.name} ({vector_store.collection.count()} chunks)")
-print(f"[startup] Documents in registry: {len(vector_store.list_documents())}")
-print(f"[startup] Gemini API key configured: {bool(llm_service.gemini_api_key)}")
+# Startup logging for debugging (wrapped safely)
+try:
+    if vector_store:
+        print(f"[startup] Vector DB path: {vector_store.persist_dir}")
+        print(f"[startup] Collection: {vector_store.collection.name} ({vector_store.collection.count()} chunks)")
+        print(f"[startup] Documents in registry: {len(vector_store.list_documents())}")
+    if llm_service:
+        print(f"[startup] Gemini API key configured: {bool(llm_service.gemini_api_key)}")
+except Exception as e:
+    print(f"[startup] Notice during startup logging: {e}")
 
 # ROUTE ALL PAGES AND COMPONENTS FROM MAIN.PY
 app.include_router(auth_router)
