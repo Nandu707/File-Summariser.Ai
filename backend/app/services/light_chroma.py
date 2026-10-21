@@ -45,8 +45,17 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
 
 class LightCollection:
     def __init__(self, name: str, db_dir: Path, metadata: Optional[Dict[str, Any]] = None):
-        self.name = name
-        self.db_dir = Path(db_dir)
+        if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+            self.db_dir = Path("/tmp/vector_db")
+        else:
+            try:
+                self.db_dir = Path(db_dir)
+                self.db_dir.mkdir(parents=True, exist_ok=True)
+                test_f = self.db_dir / ".write_test"
+                test_f.touch()
+                test_f.unlink()
+            except (OSError, PermissionError):
+                self.db_dir = Path("/tmp/vector_db")
         self.db_dir.mkdir(parents=True, exist_ok=True)
         self.sqlite_path = self.db_dir / "chroma.sqlite3"
         self.metadata = metadata or {}

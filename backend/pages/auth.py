@@ -115,102 +115,117 @@ def get_current_user(
 @auth_router.post("/signup", response_model=AuthResponse)
 def signup(req: SignupRequest, request: Request, response: Response):
     check_rate_limit(request)
-
-    # Validations
-    name = req.name.strip()
-    email = req.email.strip().lower()
-    password = req.password
-
-    if not name:
-        raise HTTPException(status_code=400, detail="Name is required.")
-    
-    email_regex = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-    if not re.match(email_regex, email):
-        raise HTTPException(status_code=400, detail="Please provide a valid email address.")
-
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
-
-    # Check unique email
-    existing_user = chat_history.get_user_by_email(email)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="An account with this email already exists.")
-
-    password_hash = hash_password(password)
-    user = chat_history.create_user(name=name, email=email, password_hash=password_hash)
-
-    # Auto-create initial default "All files" chat session for the new user
     try:
-        chat_history.create_session(
-            session_id=None,
-            doc_id="all",
-            title="All files",
-            user_id=user["id"]
+        # Validations
+        name = req.name.strip()
+        email = req.email.strip().lower()
+        password = req.password
+
+        if not name:
+            raise HTTPException(status_code=400, detail="Name is required.")
+        
+        email_regex = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+        if not re.match(email_regex, email):
+            raise HTTPException(status_code=400, detail="Please provide a valid email address.")
+
+        if len(password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
+        # Check unique email
+        existing_user = chat_history.get_user_by_email(email)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+        password_hash = hash_password(password)
+        user = chat_history.create_user(name=name, email=email, password_hash=password_hash)
+
+        # Auto-create initial default "All files" chat session for the new user
+        try:
+            chat_history.create_session(
+                session_id=None,
+                doc_id="all",
+                title="All files",
+                user_id=user["id"]
+            )
+        except Exception as e:
+            print(f"[Auth] Notice creating initial session: {e}")
+
+        # Generate token
+        token = create_access_token({
+            "sub": user["id"],
+            "name": user["name"],
+            "email": user["email"]
+        })
+
+        # Set secure httpOnly cookie
+        is_https = bool(os.getenv("VERCEL") or request.url.scheme == "https")
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            httponly=True,
+            max_age=JWT_EXPIRATION_DAYS * 86400,
+            samesite="lax",
+            secure=is_https
         )
+
+        user_resp = UserResponse(
+            id=user["id"],
+            name=user["name"],
+            email=user["email"],
+            created_at=user.get("created_at")
+        )
+        return AuthResponse(token=token, user=user_resp)
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[Auth] Notice creating initial session: {e}")
-
-    # Generate token
-    token = create_access_token({
-        "sub": user["id"],
-        "name": user["name"],
-        "email": user["email"]
-    })
-
-    # Set secure httpOnly cookie
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        max_age=JWT_EXPIRATION_DAYS * 86400,
-        samesite="lax",
-        secure=False  # Set to True if in HTTPS production
-    )
-
-    user_resp = UserResponse(
-        id=user["id"],
-        name=user["name"],
-        email=user["email"],
-        created_at=user.get("created_at")
-    )
-    return AuthResponse(token=token, user=user_resp)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
 
 @auth_router.post("/login", response_model=AuthResponse)
 def login(req: LoginRequest, request: Request, response: Response):
     check_rate_limit(request)
+    try:
+        email = req.email.strip().lower()
+        password = req.password
 
-    email = req.email.strip().lower()
-    password = req.password
+        user = chat_history.get_user_by_email(email)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    user = chat_history.get_user_by_email(email)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        if not verify_password(password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    if not verify_password(password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        token = create_access_token({
+            "sub": user["id"],
+            "name": user["name"],
+            "email": user["email"]
+        })
 
-    token = create_access_token({
-        "sub": user["id"],
-        "name": user["name"],
-        "email": user["email"]
-    })
+        is_https = bool(os.getenv("VERCEL") or request.url.scheme == "https")
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            httponly=True,
+            max_age=JWT_EXPIRATION_DAYS * 86400,
+            samesite="lax",
+            secure=is_https
+        )
 
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        max_age=JWT_EXPIRATION_DAYS * 86400,
-        samesite="lax",
-        secure=False
-    )
+        user_resp = UserResponse(
+            id=user["id"],
+            name=user["name"],
+            email=user["email"],
+            created_at=user.get("created_at")
+        )
+        return AuthResponse(token=token, user=user_resp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
-    user_resp = UserResponse(
-        id=user["id"],
-        name=user["name"],
-        email=user["email"],
-        created_at=user.get("created_at")
-    )
-    return AuthResponse(token=token, user=user_resp)
 
 @auth_router.post("/logout")
 def logout(response: Response):

@@ -76,14 +76,28 @@ class VectorStoreService:
         root_vdb = project_root / "vector_db"
         backend_vdb = project_root / "backend" / "vector_db"
 
-        if persist_dir:
+        if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+            self.persist_dir = Path("/tmp/vector_db").resolve()
+        elif persist_dir:
             self.persist_dir = Path(persist_dir).resolve()
         else:
             self.persist_dir = root_vdb.resolve()
 
-        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.persist_dir.mkdir(parents=True, exist_ok=True)
+            test_f = self.persist_dir / ".write_test"
+            test_f.touch()
+            test_f.unlink()
+        except (OSError, PermissionError):
+            self.persist_dir = Path("/tmp/vector_db").resolve()
+            self.persist_dir.mkdir(parents=True, exist_ok=True)
+
         self.files_dir = self.persist_dir / "files"
-        self.files_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.files_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError):
+            self.files_dir = Path("/tmp/vector_db/files").resolve()
+            self.files_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize persistent local ChromaDB client
         self.client = chromadb.PersistentClient(path=str(self.persist_dir))

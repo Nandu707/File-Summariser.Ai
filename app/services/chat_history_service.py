@@ -15,17 +15,36 @@ class ChatHistoryService:
     """
     def __init__(self, db_path: Optional[Path] = None, firebase_service: Optional[Any] = None):
         if db_path is None:
-            base_dir = Path(__file__).resolve().parent.parent.parent
-            if (base_dir / "vector_db").exists():
-                self.db_path = base_dir / "vector_db" / "chat_history.db"
-            elif (base_dir.parent / "vector_db").exists():
-                self.db_path = base_dir.parent / "vector_db" / "chat_history.db"
+            if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+                tmp_dir = Path("/tmp/vector_db")
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                self.db_path = tmp_dir / "chat_history.db"
             else:
-                self.db_path = base_dir / "vector_db" / "chat_history.db"
+                base_dir = Path(__file__).resolve().parent.parent.parent
+                if (base_dir / "vector_db").exists():
+                    candidate = base_dir / "vector_db" / "chat_history.db"
+                elif (base_dir.parent / "vector_db").exists():
+                    candidate = base_dir.parent / "vector_db" / "chat_history.db"
+                else:
+                    candidate = base_dir / "vector_db" / "chat_history.db"
+                try:
+                    candidate.parent.mkdir(parents=True, exist_ok=True)
+                    test_f = candidate.parent / ".write_test"
+                    test_f.touch()
+                    test_f.unlink()
+                    self.db_path = candidate
+                except (OSError, PermissionError):
+                    tmp_dir = Path("/tmp/vector_db")
+                    tmp_dir.mkdir(parents=True, exist_ok=True)
+                    self.db_path = tmp_dir / "chat_history.db"
         else:
             self.db_path = Path(db_path)
-
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError):
+                tmp_dir = Path("/tmp/vector_db")
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                self.db_path = tmp_dir / "chat_history.db"
         self.firebase_service = firebase_service
         self._init_db()
         self._sync_to_firebase()
