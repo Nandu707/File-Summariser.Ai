@@ -30,8 +30,15 @@ export default function DocumentPageModal({
   useEffect(() => {
     if (isOpen) {
       setCurrentPage(initialPage || 1);
+      setPageData(null);
+      setError(null);
+      const isDocPdf = filename ? filename.toLowerCase().endsWith('.pdf') : false;
+      setActiveTab(isDocPdf ? 'preview' : 'text');
+    } else {
+      setPageData(null);
+      setError(null);
     }
-  }, [isOpen, initialPage]);
+  }, [isOpen, initialPage, docId, filename]);
 
   const fetchPage = useCallback(async (pageToLoad) => {
     if (!docId) return;
@@ -42,6 +49,8 @@ export default function DocumentPageModal({
       setPageData(res.data);
       if (res.data.file_type !== 'pdf') {
         setActiveTab('text');
+      } else {
+        setActiveTab('preview');
       }
     } catch (err) {
       console.error('Failed to load document page:', err);
@@ -177,16 +186,18 @@ export default function DocumentPageModal({
               </div>
             )}
 
-            {/* Open Raw File in New Tab Button */}
-            <button
-              type="button"
-              onClick={handleOpenExternal}
-              title="Open full file at this page in browser tab"
-              className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-indigo-700 transition-colors shadow-2xs"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
-              <span className="hidden md:inline">Open in Tab</span>
-            </button>
+            {/* Open Raw File in New Tab Button (PDF only to prevent downloads of other formats) */}
+            {isPdf && (
+              <button
+                type="button"
+                onClick={handleOpenExternal}
+                title="Open full file at this page in browser tab"
+                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-indigo-700 transition-colors shadow-2xs"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden md:inline">Open in Tab</span>
+              </button>
+            )}
 
             {/* Close Modal Button */}
             <button

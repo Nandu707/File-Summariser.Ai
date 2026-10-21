@@ -121,20 +121,29 @@ export default function ChatPage({
 
   const handleOpenPageModal = (pageDocId, pageNum, filename) => {
     let targetDocId = pageDocId;
+    let targetFilename = filename;
     if (!targetDocId || targetDocId === 'all') {
       if (filename && Array.isArray(documents) && documents.length > 0) {
         const found = documents.find((d) => d.filename === filename);
-        if (found) targetDocId = found.doc_id;
+        if (found) {
+          targetDocId = found.doc_id;
+          targetFilename = found.filename;
+        }
       }
       if (!targetDocId && Array.isArray(documents) && documents.length > 0) {
         targetDocId = documents[0].doc_id;
+        targetFilename = documents[0].filename;
       }
     }
 
     if (targetDocId) {
       const page = pageNum || 1;
-      const pdfUrl = `http://localhost:8000/api/documents/${targetDocId}/file#page=${page}`;
-      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      setModalState({
+        isOpen: true,
+        docId: targetDocId,
+        page: page,
+        filename: targetFilename || 'Document'
+      });
     }
   };
 

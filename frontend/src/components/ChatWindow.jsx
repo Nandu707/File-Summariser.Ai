@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
+import DocumentPageModal from './DocumentPageModal';
 import {
   Send,
   Bot,
@@ -47,6 +48,12 @@ export default function ChatWindow({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [isResetting, setIsResetting] = useState(false);
+  const [localModalState, setLocalModalState] = useState({
+    isOpen: false,
+    page: 1,
+    docId: null,
+    filename: ''
+  });
 
   const chatContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -317,9 +324,16 @@ export default function ChatWindow({
     if (!targetDocId) return;
 
     const page = pageNum || 1;
-    const cleanFn = targetFilename ? encodeURIComponent(targetFilename) : 'document.pdf';
-    const pdfUrl = `http://localhost:8000/api/documents/${targetDocId}/file/${cleanFn}#page=${page}`;
-    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+    if (onViewPage) {
+      onViewPage(targetDocId, page, targetFilename);
+    } else {
+      setLocalModalState({
+        isOpen: true,
+        docId: targetDocId,
+        page: page,
+        filename: targetFilename || 'Document'
+      });
+    }
   };
 
   const defaultSamplePrompts = isAllDocs
@@ -579,7 +593,7 @@ export default function ChatWindow({
                               type="button"
                               onClick={() => handleOpenSourcePdf(fid, detail.page, fn)}
                               className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
-                              title={`Open ${fn} at Page ${detail.page} in PDF viewer`}
+                              title={`View ${fn} at Page ${detail.page} inside site`}
                             >
                               <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
                               <span>{fn ? `${fn} • ` : ''}Page {detail.page}</span>
@@ -751,6 +765,16 @@ export default function ChatWindow({
           <span>{isFileDeleted ? 'Chat is read-only' : 'Shift+Enter for newline'}</span>
         </div>
       </div>
+
+      {!onViewPage && (
+        <DocumentPageModal
+          isOpen={localModalState.isOpen}
+          onClose={() => setLocalModalState((prev) => ({ ...prev, isOpen: false }))}
+          docId={localModalState.docId}
+          initialPage={localModalState.page}
+          filename={localModalState.filename}
+        />
+      )}
     </section>
   );
 }
