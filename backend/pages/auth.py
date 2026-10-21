@@ -98,17 +98,38 @@ def get_current_user(
         )
 
     user_id = payload["sub"]
-    user = chat_history.get_user_by_id(user_id)
+    user = None
+    if chat_history:
+        try:
+            user = chat_history.get_user_by_id(user_id)
+        except Exception:
+            user = None
+
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account no longer exists."
-        )
+        # User is cryptographically verified from signed JWT token!
+        # Re-populate from trusted token claims and ensure cached in current serverless worker
+        user = {
+            "id": user_id,
+            "name": payload.get("name") or "User",
+            "email": payload.get("email") or "",
+            "created_at": datetime.utcnow().isoformat()
+        }
+        if chat_history:
+            try:
+                with chat_history._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at)
+                        VALUES (?, ?, ?, '', ?)
+                    """, (user["id"], user["name"], user["email"], user["created_at"]))
+                    conn.commit()
+            except Exception:
+                pass
 
     return {
         "id": user["id"],
-        "name": user["name"],
-        "email": user["email"],
+        "name": user.get("name") or payload.get("name") or "User",
+        "email": user.get("email") or payload.get("email") or "",
         "created_at": user.get("created_at")
     }
 

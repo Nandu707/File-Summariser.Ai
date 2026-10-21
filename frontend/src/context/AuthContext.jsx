@@ -67,12 +67,16 @@ export function AuthProvider({ children }) {
       (response) => response,
       (error) => {
         if (error.response && error.response.status === 401) {
-          setUser(null);
-          setToken(null);
-          try {
-            localStorage.removeItem('auth_token');
-          } catch {}
-          updateAuthHeader(null);
+          const reqUrl = error.config?.url || '';
+          // Do not reset user if 401 came from login or signup attempts
+          if (!reqUrl.includes('/api/auth/login') && !reqUrl.includes('/api/auth/signup')) {
+            setUser(null);
+            setToken(null);
+            try {
+              localStorage.removeItem('auth_token');
+            } catch {}
+            updateAuthHeader(null);
+          }
         }
         return Promise.reject(error);
       }
