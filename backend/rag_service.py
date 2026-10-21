@@ -5,7 +5,10 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pymupdf as fitz  # PyMuPDF
-import chromadb
+try:
+    import chromadb
+except (ImportError, Exception):
+    from backend.app.services import light_chroma as chromadb
 from dotenv import load_dotenv
 
 load_dotenv()

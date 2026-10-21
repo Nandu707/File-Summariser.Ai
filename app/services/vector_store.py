@@ -6,10 +6,50 @@ import math
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple, Union
 import pymupdf as fitz  # PyMuPDF
-import chromadb
+try:
+    import chromadb
+except (ImportError, Exception):
+    try:
+        from backend.app.services import light_chroma as chromadb
+    except (ImportError, Exception):
+        from app.services import light_chroma as chromadb
+
 from dotenv import load_dotenv
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+except (ImportError, Exception):
+    class RecursiveCharacterTextSplitter:
+        def __init__(self, chunk_size=1000, chunk_overlap=200, length_function=len, separators=None):
+            self.chunk_size = chunk_size
+            self.chunk_overlap = chunk_overlap
+            self.length_function = length_function
+            self.separators = separators or ["\n\n", "\n", ". ", "? ", "! ", "; ", " ", ""]
+
+        def split_text(self, text: str) -> List[str]:
+            if not text:
+                return []
+            if len(text) <= self.chunk_size:
+                return [text]
+            chunks = []
+            start = 0
+            while start < len(text):
+                end = min(start + self.chunk_size, len(text))
+                if end < len(text):
+                    sub = text[start:end]
+                    for sep in self.separators:
+                        if sep and sep in sub:
+                            last_pos = sub.rfind(sep)
+                            if last_pos > self.chunk_overlap:
+                                end = start + last_pos + len(sep)
+                                break
+                chunk = text[start:end].strip()
+                if chunk:
+                    chunks.append(chunk)
+                if end >= len(text):
+                    break
+                start = max(start + 1, end - self.chunk_overlap)
+            return chunks
 
 load_dotenv()
 
