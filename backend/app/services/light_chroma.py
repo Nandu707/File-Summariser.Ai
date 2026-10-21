@@ -45,6 +45,8 @@ def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
 
 class LightCollection:
     def __init__(self, name: str, db_dir: Path, metadata: Optional[Dict[str, Any]] = None):
+        self.name = str(name)
+        self.id = f"col_{self.name}"
         if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             self.db_dir = Path("/tmp/vector_db")
         else:
@@ -60,6 +62,12 @@ class LightCollection:
         self.sqlite_path = self.db_dir / "chroma.sqlite3"
         self.metadata = metadata or {}
         self._init_db()
+
+    def modify(self, name: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None):
+        if name:
+            self.name = str(name)
+        if metadata:
+            self.metadata.update(metadata)
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.sqlite_path), check_same_thread=False)
@@ -94,14 +102,15 @@ class LightCollection:
             if cnt > 0:
                 return cnt
 
-            # Fallback: check if legacy ChromaDB tables exist and count them
-            try:
-                cur.execute("SELECT COUNT(*) FROM embeddings")
-                legacy_row = cur.fetchone()
-                if legacy_row and legacy_row[0] > 0:
-                    return legacy_row[0]
-            except Exception:
-                pass
+            # Fallback only for global default collection if light_chunks has not been populated yet
+            if self.name == "task_rag_vector_store":
+                try:
+                    cur.execute("SELECT COUNT(*) FROM embeddings")
+                    legacy_row = cur.fetchone()
+                    if legacy_row and legacy_row[0] > 0:
+                        return legacy_row[0]
+                except Exception:
+                    pass
             return 0
 
     def add(
@@ -285,11 +294,14 @@ class LightCollection:
             if where:
                 for k, v in where.items():
                     if k == "doc_id":
-                        query += " AND doc_id = ?"
-                        params.append(str(v))
+                        query += " AND (doc_id = ? OR metadata_json LIKE ?)"
+                        params.extend([str(v), f'%"doc_id": "{v}"%'])
                     elif k == "user_id":
-                        query += " AND user_id = ?"
-                        params.append(str(v))
+                        query += " AND (user_id = ? OR metadata_json LIKE ?)"
+                        params.extend([str(v), f'%"user_id": "{v}"%'])
+                    else:
+                        query += " AND metadata_json LIKE ?"
+                        params.append(f'%"{k}": "{v}"%')
 
             cur.execute(query, params)
             conn.commit()
@@ -314,7 +326,20 @@ class LightClient:
         return self.get_or_create_collection(name)
 
     def list_collections(self) -> List[LightCollection]:
-        return list(self._collections.values())
+        cols = dict(self._collections)
+        sqlite_file = self.path / "chroma.sqlite3"
+        if sqlite_file.exists():
+            try:
+                conn = sqlite3.connect(str(sqlite_file))
+                cur = conn.cursor()
+                cur.execute("SELECT DISTINCT collection_name FROM light_chunks")
+                for (cname,) in cur.fetchall():
+                    if cname and cname not in cols:
+                        cols[cname] = LightCollection(cname, self.path)
+                conn.close()
+            except Exception:
+                pass
+        return list(cols.values())
 
     def delete_collection(self, name: str):
         if name in self._collections:
