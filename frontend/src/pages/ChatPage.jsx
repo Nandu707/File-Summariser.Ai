@@ -3,6 +3,7 @@ import axios from 'axios';
 import ChatWindow from '../components/ChatWindow';
 import DocumentSidebar from '../components/DocumentSidebar';
 import DocumentPageModal from '../components/DocumentPageModal';
+import { API_BASE_URL } from '../api';
 
 export default function ChatPage({
   activeDocId = 'all',
@@ -33,7 +34,7 @@ export default function ChatPage({
   const fetchSessions = useCallback(async (q = '') => {
     try {
       setLoadingSessions(true);
-      const url = q ? `http://localhost:8000/api/chats?q=${encodeURIComponent(q)}` : 'http://localhost:8000/api/chats';
+      const url = q ? `${API_BASE_URL}/api/chats?q=${encodeURIComponent(q)}` : `${API_BASE_URL}/api/chats`;
       const res = await axios.get(url);
       if (Array.isArray(res.data)) {
         setSessions(res.data);
@@ -78,7 +79,7 @@ export default function ChatPage({
 
   const handleCreateSession = async ({ scope = 'all', file_id = null, file_name = null, title = null }) => {
     try {
-      const res = await axios.post('http://localhost:8000/api/chats', {
+      const res = await axios.post(`${API_BASE_URL}/api/chats`, {
         scope,
         file_id,
         file_name,
@@ -95,7 +96,7 @@ export default function ChatPage({
 
   const handleRenameSession = async (sessionId, newTitle) => {
     try {
-      await axios.patch(`http://localhost:8000/api/chats/${sessionId}`, { title: newTitle });
+      await axios.patch(`${API_BASE_URL}/api/chats/${sessionId}`, { title: newTitle });
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, title: newTitle } : s))
       );
@@ -106,7 +107,7 @@ export default function ChatPage({
 
   const handleDeleteSession = async (sessionId) => {
     try {
-      await axios.delete(`http://localhost:8000/api/chats/${sessionId}`);
+      await axios.delete(`${API_BASE_URL}/api/chats/${sessionId}`);
       const remaining = sessions.filter((s) => s.id !== sessionId);
       setSessions(remaining);
       if (activeSessionId === sessionId) {

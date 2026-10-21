@@ -13,6 +13,7 @@ import {
   Layers,
   HelpCircle
 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function UploadPage({ onUploadSuccess, onNavigateTab, onSelectDoc }) {
   const [dragActive, setDragActive] = useState(false);
@@ -59,7 +60,7 @@ export default function UploadPage({ onUploadSuccess, onNavigateTab, onSelectDoc
     setUploadProgress(20);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

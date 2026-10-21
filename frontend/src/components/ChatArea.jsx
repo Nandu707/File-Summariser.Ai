@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Sparkles, Copy, Check, Loader2, ArrowUpRight } from 'lucide-react';
-import { askQuestion } from '../api';
+import { askQuestion, API_BASE_URL } from '../api';
 
 export default function ChatArea({ activeDoc, onOpenUpload }) {
   const [messages, setMessages] = useState([]);
@@ -46,7 +46,7 @@ export default function ChatArea({ activeDoc, onOpenUpload }) {
     const fetchQuestions = async () => {
       setLoadingQuestions(true);
       try {
-        const res = await fetch(`http://localhost:8000/api/documents/${activeDoc.doc_id}/suggested-questions`);
+        const res = await fetch(`${API_BASE_URL}/api/documents/${activeDoc.doc_id}/suggested-questions`);
         if (res.ok) {
           const data = await res.json();
           if (isMounted && data && Array.isArray(data.suggested_questions)) {

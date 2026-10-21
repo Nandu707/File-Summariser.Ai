@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { UploadCloud, FileText, CheckCircle2, AlertCircle, Loader2, Sparkles, Layers, Trash2 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function FileUploader({ onUploadSuccess, activeDocId, onSelectDoc, disabled = false }) {
   const [dragActive, setDragActive] = useState(false);
@@ -13,7 +14,7 @@ export default function FileUploader({ onUploadSuccess, activeDocId, onSelectDoc
   // Fetch document list from backend
   const fetchDocuments = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/documents');
+      const res = await axios.get(`${API_BASE_URL}/api/documents`);
       if (Array.isArray(res.data)) {
         setDocuments(res.data);
       }
@@ -55,7 +56,7 @@ export default function FileUploader({ onUploadSuccess, activeDocId, onSelectDoc
     setUploadStatus('Uploading document...');
 
     try {
-      const response = await axios.post('http://localhost:8000/api/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -106,7 +107,7 @@ export default function FileUploader({ onUploadSuccess, activeDocId, onSelectDoc
     e.stopPropagation();
     if (disabled) return;
     try {
-      await axios.delete(`http://localhost:8000/api/documents/${docId}`);
+      await axios.delete(`${API_BASE_URL}/api/documents/${docId}`);
       await fetchDocuments();
       if (activeDocId === docId && onSelectDoc) {
         const remaining = documents.filter((d) => d.doc_id !== docId);

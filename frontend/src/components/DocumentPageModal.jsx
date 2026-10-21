@@ -12,6 +12,7 @@ import {
   FileCode,
   BookOpen
 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function DocumentPageModal({
   isOpen,
@@ -45,7 +46,7 @@ export default function DocumentPageModal({
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get(`http://localhost:8000/api/documents/${docId}/pages/${pageToLoad}`);
+      const res = await axios.get(`${API_BASE_URL}/api/documents/${docId}/pages/${pageToLoad}`);
       setPageData(res.data);
       if (res.data.file_type !== 'pdf') {
         setActiveTab('text');
@@ -84,8 +85,8 @@ export default function DocumentPageModal({
   if (!isOpen) return null;
 
   const totalPages = pageData?.total_pages || 1;
-  const isPdf = pageData ? pageData.file_type === 'pdf' : filename.toLowerCase().endsWith('.pdf');
-  const fileUrl = pageData?.file_url || `http://localhost:8000/api/documents/${docId}/file#page=${currentPage}`;
+  const isPdf = pageData ? pageData.file_type === 'pdf' : (filename ? filename.toLowerCase().endsWith('.pdf') : false);
+  const fileUrl = pageData?.file_url || `${API_BASE_URL}/api/documents/${docId}/file#page=${currentPage}`;
 
   const handleCopyText = () => {
     if (!pageData?.content) return;
@@ -243,7 +244,7 @@ export default function DocumentPageModal({
             <div className="w-full h-full rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs">
               <iframe
                 title={`Page ${currentPage} of ${filename}`}
-                src={`http://localhost:8000/api/documents/${docId}/file#page=${currentPage}&toolbar=1&navpanes=0`}
+                src={`${API_BASE_URL}/api/documents/${docId}/file#page=${currentPage}&toolbar=1&navpanes=0`}
                 className="w-full h-full border-0"
               />
             </div>

@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import requests
+from dotenv import load_dotenv
+
+# Ensure environment variables are loaded
+load_dotenv()
 
 logger = logging.getLogger("FirebaseService")
 
@@ -94,6 +98,26 @@ class FirebaseService:
                 return
 
             base_dir = Path(__file__).resolve().parent.parent.parent
+
+            # 1a. Check for raw JSON string in environment variable (useful for cloud/Vercel)
+            sa_json_env = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+            if sa_json_env:
+                try:
+                    sa_dict = json.loads(sa_json_env)
+                    cred = credentials.Certificate(sa_dict)
+                    firebase_admin.initialize_app(cred, {"storageBucket": self.storage_bucket})
+                    self.db = firestore.client()
+                    try:
+                        self.bucket = storage.bucket()
+                    except Exception:
+                        self.bucket = None
+                    self.is_active = True
+                    self.mode = "admin"
+                    print("[Firebase] Successfully connected via FIREBASE_SERVICE_ACCOUNT_JSON environment variable!")
+                    return
+                except Exception as sa_err:
+                    print(f"[Firebase] Notice parsing FIREBASE_SERVICE_ACCOUNT_JSON: {sa_err}")
+
             possible_key_paths = [
                 Path(os.getenv("FIREBASE_CREDENTIALS_PATH", "")) if os.getenv("FIREBASE_CREDENTIALS_PATH") else None,
                 base_dir / "firebase_service_account.json",
@@ -266,6 +290,199 @@ class FirebaseService:
                 print(f"[Firebase REST] Error deleting document {doc_id}: {e}")
 
         return False
+
+    # ---------------- User Account Management & Firestore Storage ----------------
+    def save_user(self, user_data: Dict[str, Any]) -> bool:
+        """
+        Stores user profile, credentials hash, and account metadata in Firestore 'users' collection.
+        Collection path: users/{user_id}
+        """
+        if not self.is_active:
+            return False
+
+        user_id = user_data.get("id")
+        if not user_id:
+            return False
+
+        clean_data = {
+            "id": str(user_id).strip(),
+            "name": str(user_data.get("name", "")).strip(),
+            "email": str(user_data.get("email", "")).strip().lower(),
+            "password_hash": str(user_data.get("password_hash", "")),
+            "created_at": user_data.get("created_at") or datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        # Admin SDK Mode
+        if self.mode == "admin" and self.db:
+            try:
+                self.db.collection("users").document(user_id).set(clean_data, merge=True)
+                return True
+            except Exception as e:
+                print(f"[Firebase Admin] Error saving user {user_id}: {e}")
+
+        # REST API Mode
+        if self.mode == "rest" and self.api_key:
+            try:
+                url = f"{self.firestore_base_url}/users/{user_id}?key={self.api_key}"
+                body = {"fields": _to_firestore_fields(clean_data)}
+                r = requests.patch(url, json=body, timeout=5)
+                if r.status_code in [200, 201]:
+                    return True
+                else:
+                    print(f"[Firebase REST] Save user status {r.status_code}: {r.text[:120]}")
+            except Exception as e:
+                print(f"[Firebase REST] Error saving user {user_id}: {e}")
+
+        return False
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves user profile and credentials by user ID from Firestore 'users' collection."""
+        if not self.is_active or not user_id:
+            return None
+
+        # Admin SDK Mode
+        if self.mode == "admin" and self.db:
+            try:
+                doc = self.db.collection("users").document(user_id.strip()).get()
+                if doc.exists:
+                    return doc.to_dict()
+            except Exception as e:
+                print(f"[Firebase Admin] Error fetching user {user_id}: {e}")
+
+        # REST API Mode
+        if self.mode == "rest" and self.api_key:
+            try:
+                url = f"{self.firestore_base_url}/users/{user_id.strip()}?key={self.api_key}"
+                r = requests.get(url, timeout=5)
+                if r.status_code == 200:
+                    data = r.json()
+                    return _from_firestore_fields(data.get("fields", {}))
+            except Exception as e:
+                print(f"[Firebase REST] Error fetching user {user_id}: {e}")
+
+        return None
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Retrieves user profile and credentials by email address from Firestore 'users' collection."""
+        if not self.is_active or not email:
+            return None
+
+        clean_email = email.strip().lower()
+
+        # Admin SDK Mode
+        if self.mode == "admin" and self.db:
+            try:
+                users_ref = self.db.collection("users").where("email", "==", clean_email).limit(1)
+                docs = list(users_ref.stream())
+                if docs:
+                    return docs[0].to_dict()
+            except Exception as e:
+                print(f"[Firebase Admin] Error querying user by email {clean_email}: {e}")
+
+        # REST API Mode
+        if self.mode == "rest" and self.api_key:
+            try:
+                query_url = f"{self.firestore_base_url}:runQuery?key={self.api_key}"
+                body = {
+                    "structuredQuery": {
+                        "from": [{"collectionId": "users"}],
+                        "where": {
+                            "fieldFilter": {
+                                "field": {"fieldPath": "email"},
+                                "op": "EQUAL",
+                                "value": {"stringValue": clean_email}
+                            }
+                        },
+                        "limit": 1
+                    }
+                }
+                r = requests.post(query_url, json=body, timeout=5)
+                if r.status_code == 200:
+                    results = r.json()
+                    for item in results:
+                        doc = item.get("document")
+                        if doc and "fields" in doc:
+                            return _from_firestore_fields(doc["fields"])
+            except Exception as e:
+                print(f"[Firebase REST] Error querying user by email {clean_email}: {e}")
+
+        return None
+
+    def save_session(self, session_data: Dict[str, Any]) -> bool:
+        """Stores a user's chat session in Firestore 'sessions' collection."""
+        if not self.is_active:
+            return False
+
+        sess_id = session_data.get("id")
+        if not sess_id:
+            return False
+
+        clean_data = {
+            "id": sess_id,
+            "user_id": str(session_data.get("user_id", "")),
+            "title": str(session_data.get("title", "")),
+            "scope": str(session_data.get("scope", "all")),
+            "file_id": str(session_data.get("file_id") or ""),
+            "file_name": str(session_data.get("file_name") or ""),
+            "created_at": session_data.get("created_at") or datetime.utcnow().isoformat(),
+            "updated_at": session_data.get("updated_at") or datetime.utcnow().isoformat(),
+            "is_file_deleted": bool(session_data.get("is_file_deleted", False))
+        }
+
+        # Admin SDK Mode
+        if self.mode == "admin" and self.db:
+            try:
+                self.db.collection("sessions").document(sess_id).set(clean_data, merge=True)
+                return True
+            except Exception as e:
+                print(f"[Firebase Admin] Error saving session {sess_id}: {e}")
+
+        # REST API Mode
+        if self.mode == "rest" and self.api_key:
+            try:
+                url = f"{self.firestore_base_url}/sessions/{sess_id}?key={self.api_key}"
+                body = {"fields": _to_firestore_fields(clean_data)}
+                r = requests.patch(url, json=body, timeout=5)
+                return r.status_code in [200, 201]
+            except Exception as e:
+                print(f"[Firebase REST] Error saving session {sess_id}: {e}")
+
+        return False
+
+    def delete_session(self, session_id: str) -> bool:
+        """Deletes a user's chat session from Firestore 'sessions' collection."""
+        if not self.is_active or not session_id:
+            return False
+
+        # Admin SDK Mode
+        if self.mode == "admin" and self.db:
+            try:
+                self.db.collection("sessions").document(session_id).delete()
+                return True
+            except Exception as e:
+                print(f"[Firebase Admin] Error deleting session {session_id}: {e}")
+
+        # REST API Mode
+        if self.mode == "rest" and self.api_key:
+            try:
+                url = f"{self.firestore_base_url}/sessions/{session_id}?key={self.api_key}"
+                r = requests.delete(url, timeout=5)
+                return r.status_code in [200, 204]
+            except Exception as e:
+                print(f"[Firebase REST] Error deleting session {session_id}: {e}")
+
+        return False
+
+    def sync_all_users(self, users: List[Dict[str, Any]]) -> int:
+        """Uploads a batch of user records to Firestore."""
+        if not self.is_active or not users:
+            return 0
+        count = 0
+        for u in users:
+            if self.save_user(u):
+                count += 1
+        return count
 
     # ---------------- Chat Messages Persistence ----------------
     def save_chat_message(

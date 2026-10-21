@@ -18,6 +18,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import DocumentPageModal from '../components/DocumentPageModal';
+import { API_BASE_URL } from '../api';
 
 export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCountChange }) {
   const [documents, setDocuments] = useState([]);
@@ -47,7 +48,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get('http://localhost:8000/api/documents');
+      const res = await axios.get(`${API_BASE_URL}/api/documents`);
       if (Array.isArray(res.data)) {
         setDocuments(res.data);
         if (onDocumentCountChange) {
@@ -117,7 +118,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
     setUploadProgress(20);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -166,7 +167,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
 
     setDeletingId(docId);
     try {
-      await axios.delete(`http://localhost:8000/api/documents/${docId}`);
+      await axios.delete(`${API_BASE_URL}/api/documents/${docId}`);
       if (onSelectDoc) {
         onSelectDoc('all');
       }
@@ -490,7 +491,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                         <Eye className="w-4 h-4" />
                       </button>
                       <a
-                        href={`http://localhost:8000/api/documents/${doc.doc_id}/file`}
+                        href={`${API_BASE_URL}/api/documents/${doc.doc_id}/file`}
                         target="_blank"
                         rel="noreferrer"
                         title="Download / View original file"

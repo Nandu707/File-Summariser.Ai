@@ -78,12 +78,16 @@ origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-if cors_origins_env not in origins:
+if cors_origins_env and cors_origins_env not in origins:
     origins.append(cors_origins_env)
+vercel_url = os.getenv("VERCEL_URL")
+if vercel_url:
+    origins.append(f"https://{vercel_url}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -14,6 +14,7 @@ import {
   Flame,
   Globe
 } from 'lucide-react';
+import { API_BASE_URL } from '../api';
 
 export default function SystemPage() {
   const [healthData, setHealthData] = useState(null);
@@ -25,11 +26,11 @@ export default function SystemPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get('http://localhost:8000/api/health');
+      const res = await axios.get(`${API_BASE_URL}/api/health`);
       setHealthData(res.data);
       setLastChecked(new Date().toLocaleTimeString());
     } catch (err) {
-      setError('Cannot connect to backend at http://localhost:8000');
+      setError(`Cannot connect to backend (${API_BASE_URL || 'relative path'})`);
     } finally {
       setLoading(false);
     }
@@ -89,7 +90,7 @@ export default function SystemPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">FastAPI Backend</h3>
-                    <p className="text-[11px] text-slate-500">http://localhost:8000</p>
+                    <p className="text-[11px] text-slate-500">{API_BASE_URL || window.location.origin}</p>
                   </div>
                 </div>
                 <span className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -114,7 +115,7 @@ export default function SystemPage() {
               </div>
 
               <a
-                href="http://localhost:8000/docs"
+                href={`${API_BASE_URL}/docs`}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center justify-center space-x-1.5 w-full py-2 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 transition-colors"

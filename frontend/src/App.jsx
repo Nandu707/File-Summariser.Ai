@@ -5,6 +5,7 @@ import { ChatPage, DocumentsPage } from './pages';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { API_BASE_URL } from './api';
 
 function MainApp() {
   const { user, loading, isAuthenticated } = useAuth();
@@ -33,12 +34,12 @@ function MainApp() {
   const fetchDocuments = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
-      const res = await axios.get('http://localhost:8000/api/health');
+      const res = await axios.get(`${API_BASE_URL}/api/health`);
       if (res.status === 200) {
         setBackendStatus('healthy');
       }
 
-      const docsRes = await axios.get('http://localhost:8000/api/documents');
+      const docsRes = await axios.get(`${API_BASE_URL}/api/documents`);
       if (Array.isArray(docsRes.data)) {
         setDocuments(docsRes.data);
       }

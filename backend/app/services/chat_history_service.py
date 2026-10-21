@@ -13,7 +13,7 @@ class ChatHistoryService:
     Supports per-user private data isolation, full-text search, auto-titling,
     soft deletion of files, and automatic daily cleanup of old chat sessions.
     """
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Optional[Path] = None, firebase_service: Optional[Any] = None):
         if db_path is None:
             base_dir = Path(__file__).resolve().parent.parent.parent
             if (base_dir / "vector_db").exists():
@@ -26,7 +26,28 @@ class ChatHistoryService:
             self.db_path = Path(db_path)
 
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.firebase_service = firebase_service
         self._init_db()
+        self._sync_to_firebase()
+
+    def set_firebase_service(self, firebase_service: Any):
+        """Sets or updates the firebase_service instance and triggers user sync."""
+        self.firebase_service = firebase_service
+        self._sync_to_firebase()
+
+    def _sync_to_firebase(self):
+        """Initial background sync of existing local users to Firebase Firestore if active."""
+        if not self.firebase_service or not getattr(self.firebase_service, "is_active", False):
+            return
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, name, email, password_hash, created_at FROM users")
+                users = [dict(r) for r in cursor.fetchall()]
+                if users and hasattr(self.firebase_service, "sync_all_users"):
+                    self.firebase_service.sync_all_users(users)
+        except Exception as e:
+            print(f"[ChatHistory] Notice syncing users to Firebase: {e}")
 
     def _get_connection(self):
         conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
@@ -150,7 +171,7 @@ class ChatHistoryService:
     # ==========================================
 
     def create_user(self, name: str, email: str, password_hash: str) -> Dict[str, Any]:
-        """Creates a new user record with validation and initial 'All files' session."""
+        """Creates a new user record with validation, initial 'All files' session, and Firebase sync."""
         clean_email = email.strip().lower()
         clean_name = name.strip()
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -164,6 +185,21 @@ class ChatHistoryService:
             """, (user_id, clean_name, clean_email, password_hash, now_iso))
             conn.commit()
 
+        user_dict = {
+            "id": user_id,
+            "name": clean_name,
+            "email": clean_email,
+            "password_hash": password_hash,
+            "created_at": now_iso
+        }
+
+        # Synchronize to Firebase Firestore 'users' collection
+        if self.firebase_service and getattr(self.firebase_service, "is_active", False):
+            try:
+                self.firebase_service.save_user(user_dict)
+            except Exception as fe:
+                print(f"[ChatHistory] Notice syncing user to Firebase: {fe}")
+
         # Seed initial 'All files' chat session for this user
         self.create_session(scope="all", title="All files", user_id=user_id)
 
@@ -175,7 +211,7 @@ class ChatHistoryService:
         }
 
     def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Retrieves user by email address."""
+        """Retrieves user by email address from SQLite, falling back to Firebase Firestore."""
         if not email:
             return None
         clean_email = email.strip().lower()
@@ -185,19 +221,66 @@ class ChatHistoryService:
             row = cursor.fetchone()
             if row:
                 return dict(row)
-            return None
+
+        # Fallback to Firebase Firestore 'users' collection
+        if self.firebase_service and getattr(self.firebase_service, "is_active", False):
+            try:
+                fb_user = self.firebase_service.get_user_by_email(clean_email)
+                if fb_user and fb_user.get("id"):
+                    with self._get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (
+                            fb_user["id"],
+                            fb_user.get("name", ""),
+                            fb_user.get("email", clean_email),
+                            fb_user.get("password_hash", ""),
+                            fb_user.get("created_at", datetime.utcnow().isoformat())
+                        ))
+                        conn.commit()
+                    return fb_user
+            except Exception as fe:
+                print(f"[ChatHistory] Notice fetching user from Firebase by email: {fe}")
+
+        return None
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves user by user ID."""
+        """Retrieves user by user ID from SQLite, falling back to Firebase Firestore."""
         if not user_id:
             return None
+        clean_id = user_id.strip()
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, email, password_hash, created_at FROM users WHERE id = ?", (user_id.strip(),))
+            cursor.execute("SELECT id, name, email, password_hash, created_at FROM users WHERE id = ?", (clean_id,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
-            return None
+
+        # Fallback to Firebase Firestore 'users' collection
+        if self.firebase_service and getattr(self.firebase_service, "is_active", False):
+            try:
+                fb_user = self.firebase_service.get_user_by_id(clean_id)
+                if fb_user and fb_user.get("id"):
+                    with self._get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (
+                            fb_user["id"],
+                            fb_user.get("name", ""),
+                            fb_user.get("email", ""),
+                            fb_user.get("password_hash", ""),
+                            fb_user.get("created_at", datetime.utcnow().isoformat())
+                        ))
+                        conn.commit()
+                    return fb_user
+            except Exception as fe:
+                print(f"[ChatHistory] Notice fetching user from Firebase by ID: {fe}")
+
+        return None
 
     # ==========================================
     # FILE MANAGEMENT (STATUS TRACKING & SOFT DELETION)
@@ -364,7 +447,7 @@ class ChatHistoryService:
             """, (actual_session_id, clean_title, clean_scope, clean_file_id, clean_fn, now_iso, now_iso, user_id))
             conn.commit()
 
-        return {
+        session_dict = {
             "id": actual_session_id,
             "title": clean_title,
             "scope": clean_scope,
@@ -376,6 +459,15 @@ class ChatHistoryService:
             "user_id": user_id,
             "message_count": 0
         }
+
+        # Synchronize session to Firebase Firestore
+        if self.firebase_service and getattr(self.firebase_service, "is_active", False):
+            try:
+                self.firebase_service.save_session(session_dict)
+            except Exception as fe:
+                print(f"[ChatHistory] Notice syncing session to Firebase: {fe}")
+
+        return session_dict
 
     def get_session(self, chat_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Retrieves session details by id, strictly verifying ownership by user_id."""
@@ -577,7 +669,14 @@ class ChatHistoryService:
             if chat_id != "all":
                 cursor.execute("DELETE FROM threads WHERE doc_id = ?", (chat_id,))
             conn.commit()
-            return True
+
+        if self.firebase_service and getattr(self.firebase_service, "is_active", False):
+            try:
+                self.firebase_service.delete_session(chat_id)
+            except Exception as fe:
+                print(f"[ChatHistory] Notice deleting session from Firebase: {fe}")
+
+        return True
 
     # ==========================================
     # MESSAGE MANAGEMENT

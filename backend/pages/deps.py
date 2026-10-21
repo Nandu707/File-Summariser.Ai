@@ -10,5 +10,5 @@ load_dotenv()
 # Singleton service instances
 vector_store = VectorStoreService()
 llm_service = LLMService()
-chat_history = ChatHistoryService()
 firebase_service = FirebaseService()
+chat_history = ChatHistoryService(firebase_service=firebase_service)

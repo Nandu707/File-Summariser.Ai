@@ -949,8 +949,9 @@ class VectorStoreService:
         file_path = self.get_document_file_path(doc_id, user_id=user_id)
         has_raw = file_path is not None and file_path.exists()
 
-        pdf_url = f"http://localhost:8000/api/documents/{doc_id}/file#page={page_num}"
-        file_url = pdf_url if ext == "pdf" else f"http://localhost:8000/api/documents/{doc_id}/file"
+        base_url = os.getenv("PUBLIC_URL", "").rstrip("/")
+        pdf_url = f"{base_url}/api/documents/{doc_id}/file#page={page_num}"
+        file_url = pdf_url if ext == "pdf" else f"{base_url}/api/documents/{doc_id}/file"
 
         return {
             "doc_id": doc_id,

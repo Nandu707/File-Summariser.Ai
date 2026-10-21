@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import DocumentPageModal from './DocumentPageModal';
+import { API_BASE_URL } from '../api';
 import {
   Send,
   Bot,
@@ -89,14 +90,14 @@ export default function ChatWindow({
     const fetchChatMessages = async () => {
       setLoadingChat(true);
       try {
-        const res = await axios.get(`http://localhost:8000/api/chats/${effectiveSessionId}`);
+        const res = await axios.get(`${API_BASE_URL}/api/chats/${effectiveSessionId}`);
         if (isMounted && res.data && Array.isArray(res.data.messages)) {
           setMessages(res.data.messages);
         }
       } catch (err) {
         // Fallback to legacy endpoint if chat session was not yet in sessions table
         try {
-          const resLegacy = await axios.get(`http://localhost:8000/api/documents/${effectiveSessionId}/chat`);
+          const resLegacy = await axios.get(`${API_BASE_URL}/api/documents/${effectiveSessionId}/chat`);
           if (isMounted && resLegacy.data && Array.isArray(resLegacy.data.messages)) {
             setMessages(resLegacy.data.messages);
           }
@@ -124,7 +125,7 @@ export default function ChatWindow({
       setLoadingSuggestions(true);
       try {
         const targetId = isAllDocs ? 'all' : (activeSession?.file_id || effectiveSessionId);
-        const res = await axios.get(`http://localhost:8000/api/documents/${targetId}/suggested-questions`);
+        const res = await axios.get(`${API_BASE_URL}/api/documents/${targetId}/suggested-questions`);
         if (isMounted && res.data && Array.isArray(res.data.suggested_questions) && res.data.suggested_questions.length > 0) {
           setSuggestedQuestions(res.data.suggested_questions);
         }
@@ -193,7 +194,7 @@ export default function ChatWindow({
         onDeleteSession(effectiveSessionId);
       } else {
         try {
-          await axios.delete(`http://localhost:8000/api/chats/${effectiveSessionId}`);
+          await axios.delete(`${API_BASE_URL}/api/chats/${effectiveSessionId}`);
         } catch (e) {
           console.error('Delete chat error:', e);
         }
@@ -238,7 +239,7 @@ export default function ChatWindow({
 
     try {
       const response = await axios.post(
-        'http://localhost:8000/api/ask',
+        `${API_BASE_URL}/api/ask`,
         {
           chat_id: effectiveSessionId,
           doc_id: activeSession?.file_id || (isAllDocs ? 'all' : effectiveSessionId),
