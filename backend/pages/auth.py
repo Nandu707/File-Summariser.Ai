@@ -179,7 +179,7 @@ def signup(req: SignupRequest, request: Request, response: Response):
         })
 
         # Set secure httpOnly cookie
-        is_https = bool(os.getenv("VERCEL") or request.url.scheme == "https")
+        is_https = bool(request.url.scheme == "https")
         response.set_cookie(
             key=COOKIE_NAME,
             value=token,
@@ -223,7 +223,7 @@ def login(req: LoginRequest, request: Request, response: Response):
             "email": user["email"]
         })
 
-        is_https = bool(os.getenv("VERCEL") or request.url.scheme == "https")
+        is_https = bool(request.url.scheme == "https")
         response.set_cookie(
             key=COOKIE_NAME,
             value=token,

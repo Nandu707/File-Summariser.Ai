@@ -22,6 +22,59 @@ import {
   Edit2
 } from 'lucide-react';
 
+export function cleanInlineSources(text) {
+  if (!text || typeof text !== 'string') return text;
+
+  const n = text.length;
+  const result = [];
+  let i = 0;
+  while (i < n) {
+    if (text[i] === '(' || text[i] === '[') {
+      const opener = text[i];
+      const closer = opener === '(' ? ')' : ']';
+      const sub = text.slice(i, i + 50).toLowerCase();
+      const isCitation = [
+        'source:', 'sources:', 'source :', 'sources :', 'source -', 'sources -',
+        'excerpt', 'see excerpt', 'doc:', 'document:', 'page ', 'pages ', 'p. ', 'pp. '
+      ].some((kw) => sub.startsWith(opener + kw));
+
+      if (isCitation) {
+        let depth = 1;
+        let j = i + 1;
+        while (j < n && depth > 0) {
+          if (text[j] === opener) depth++;
+          else if (text[j] === closer) depth--;
+          j++;
+        }
+        while (result.length > 0 && (result[result.length - 1] === ' ' || result[result.length - 1] === '\t')) {
+          result.pop();
+        }
+        i = j;
+        continue;
+      }
+    }
+    result.push(text[i]);
+    i++;
+  }
+
+  let cleaned = result.join('');
+  cleaned = cleaned.replace(/^\s*(?:Sources?|Excerpts?)\s*:.*$/gim, '');
+  cleaned = cleaned.replace(/\bSources?:\s*\[?Excerpt[^.\n]+\]?/gi, '');
+  cleaned = cleaned.replace(/\[Excerpt\s*\d+[^\]]*\]/gi, '');
+  cleaned = cleaned.replace(/\s*[\(\[]\s*(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\s*[\)\]]/gi, '');
+  cleaned = cleaned.replace(/^\s*[-*•]\s*(?:\*\*)?\(?(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\)?(?:\*\*)?:?\s*/gim, '- ');
+  cleaned = cleaned.replace(/^\s*(?:Page|Pages)\s*\d+(?:\s*[-–,]\s*\d+)*:?\s*/gim, '');
+  cleaned = cleaned.replace(/^\s*[-*•]\s*:\s*/gim, '- ');
+  cleaned = cleaned.replace(/\(\s*\)/g, '');
+  cleaned = cleaned.replace(/\[\s*\]/g, '');
+  cleaned = cleaned.replace(/\s+([.,;:!?])/g, '$1');
+  cleaned = cleaned.replace(/(?<!\.)\.\s*\.(?!\.)/g, '.');
+  cleaned = cleaned.replace(/\*\*/g, '');
+  cleaned = cleaned.replace(/[ \t]+/g, ' ');
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned.trim();
+}
+
 export default function ChatWindow({
   activeSessionId = 'all',
   activeSession = null,
@@ -252,11 +305,12 @@ export default function ChatWindow({
       );
 
       const data = response.data; // { answer, sources, source_documents, source_details, suggested_questions }
+      const cleanAns = cleanInlineSources(data.answer || '');
 
       const botMessage = {
         role: 'assistant',
-        content: data.answer || '',
-        text: data.answer || '',
+        content: cleanAns,
+        text: cleanAns,
         sources: Array.isArray(data.sources) ? data.sources : [],
         source_documents: Array.isArray(data.source_documents) ? data.source_documents : [],
         source_details: Array.isArray(data.source_details) ? data.source_details : [],
@@ -295,7 +349,7 @@ export default function ChatWindow({
   };
 
   const copyToClipboard = (text, idx) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(cleanInlineSources(text));
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 2000);
   };
@@ -554,10 +608,10 @@ export default function ChatWindow({
                 {/* Markdown Rendered Content */}
                 {msg.role === 'assistant' && !msg.isError ? (
                   <div className="prose prose-slate prose-sm max-w-none space-y-2">
-                    <ReactMarkdown>{msg.content || msg.text || ''}</ReactMarkdown>
+                    <ReactMarkdown>{cleanInlineSources(msg.content || msg.text || '')}</ReactMarkdown>
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap">{msg.content || msg.text || ''}</div>
+                  <div className="whitespace-pre-wrap">{cleanInlineSources(msg.content || msg.text || '')}</div>
                 )}
 
                 {/* Sourced Documents / Pages Badges with Deleted File Marker */}

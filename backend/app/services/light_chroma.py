@@ -2,8 +2,8 @@
 Lightweight ChromaDB Drop-In Replacement (light_chroma.py)
 ---------------------------------------------------------
 A pure-Python, zero-heavy-dependency vector database client that replaces ChromaDB
-for environments like Vercel Serverless Functions where ONNXRuntime, PyTorch,
-Transformers, Tokenizers, and HuggingFace (>450MB) blow past the 500MB function limit.
+for lightweight serverless or container environments where ONNXRuntime, PyTorch,
+Transformers, Tokenizers, and HuggingFace (>450MB) blow past bundle limits.
 
 Compatible with ChromaDB's core interface:
   - chromadb.PersistentClient(path=...)
@@ -47,7 +47,7 @@ class LightCollection:
     def __init__(self, name: str, db_dir: Path, metadata: Optional[Dict[str, Any]] = None):
         self.name = str(name)
         self.id = f"col_{self.name}"
-        if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             self.db_dir = Path("/tmp/vector_db")
         else:
             try:

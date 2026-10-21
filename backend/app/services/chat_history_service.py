@@ -15,7 +15,7 @@ class ChatHistoryService:
     """
     def __init__(self, db_path: Optional[Path] = None, firebase_service: Optional[Any] = None):
         if db_path is None:
-            if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+            if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
                 tmp_dir = Path("/tmp/vector_db")
                 tmp_dir.mkdir(parents=True, exist_ok=True)
                 self.db_path = tmp_dir / "chat_history.db"

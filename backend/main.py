@@ -51,8 +51,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Background scheduler for daily automatic chat cleanup (only for long-running servers, not serverless Vercel)
-if not os.getenv("VERCEL") and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+# Background scheduler for daily automatic chat cleanup
+if not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         scheduler = BackgroundScheduler(daemon=True)
@@ -79,14 +79,10 @@ origins = [
 ]
 if cors_origins_env and cors_origins_env not in origins:
     origins.append(cors_origins_env)
-vercel_url = os.getenv("VERCEL_URL")
-if vercel_url:
-    origins.append(f"https://{vercel_url}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

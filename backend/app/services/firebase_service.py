@@ -99,7 +99,7 @@ class FirebaseService:
 
             base_dir = Path(__file__).resolve().parent.parent.parent
 
-            # 1a. Check for raw JSON string in environment variable (useful for cloud/Vercel)
+            # 1a. Check for raw JSON string in environment variable (useful for cloud deployments)
             sa_json_env = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
             if sa_json_env:
                 try:

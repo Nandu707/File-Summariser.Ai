@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-STRICT_CONTEXT_SYSTEM_PROMPT = """You are given content from multiple uploaded files, each labelled with its file name. Answer using information from ALL relevant files. If a question spans several files, combine them. State which file each part of the answer comes from. If the answer is not in any uploaded file, say so instead of guessing."""
+STRICT_CONTEXT_SYSTEM_PROMPT = """You are an accurate, helpful assistant answering questions strictly based on the provided uploaded file excerpts. Answer using information from all relevant files. If a question spans several files, combine them into a clear, cohesive answer.
+Do NOT include inline source citations, excerpt references, document tags, or page markers (such as '(Source: ...)', '[Excerpt ...]', '(Page X)', etc.) in your answer. Do NOT use double asterisks (**) or markdown bold formatting in your response. Present the information directly and cleanly. If the answer is not in any uploaded file, say so instead of guessing."""
 
 class LLMService:
     GEMINI_MODELS = [
@@ -99,6 +100,11 @@ class LLMService:
             f"--- END OF EXCERPTS ---\n"
             f"{history_str}\n"
             f"Question: {question}\n\n"
+            f"Important instructions for the response:\n"
+            f"- Base your answer strictly on the provided excerpts.\n"
+            f"- Do NOT include inline citations or source references like '(Source: ...)' or '[Excerpt ...]' or '(Page ...)'.\n"
+            f"- Do NOT use double asterisks (**) or markdown bolding in your response.\n"
+            f"- Present all information directly, cleanly, and naturally.\n\n"
             f"Answer:"
         )
 
@@ -156,20 +162,78 @@ class LLMService:
         return self._clean_page_numbers_from_answer(ans)
 
     def _clean_page_numbers_from_answer(self, text: str) -> str:
-        """Removes any page citations or page number references from the text."""
+        """
+        Thoroughly removes any inline source citations, excerpt tags, document references,
+        or page citations (e.g. (Source: [Excerpt 1 ...]), [Excerpt 1], (Page 1)).
+        """
         if not text:
             return text
-        # Remove parenthetical page references, e.g., (Page 1), (Pages 1-3), (p. 2), [Page 1], (Page 1, 2)
-        cleaned = re.sub(r"\s*[\(\[]\s*(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\s*[\)\]]", "", text, flags=re.IGNORECASE)
-        # Remove bolded or prefix page markers like "- **(Page 1)**:" or "- (Page 1):" or "- Page 1:"
-        cleaned = re.sub(r"^\s*[-*•]\s*(?:\*\*)?\(?(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\)?(?:\*\*)?:?\s*", "- ", cleaned, flags=re.MULTILINE | re.IGNORECASE)
-        # Remove standalone "Page X:" or "Page X -" at start of lines
-        cleaned = re.sub(r"^\s*(?:Page|Pages)\s*\d+(?:\s*[-–,]\s*\d+)*:?\s*", "", cleaned, flags=re.MULTILINE | re.IGNORECASE)
-        # Clean up any trailing / empty parentheses like " ()"
+
+        # 1. Balanced-bracket scanner for (Source: ...), [Source: ...], (Excerpt ...), etc.
+        # Handles nested brackets and parentheses like:
+        # (Source: [Excerpt 1 | Document: File (1).docx | Page 4], [Excerpt 2 ...])
+        result = []
+        i = 0
+        n = len(text)
+        while i < n:
+            if text[i] in ('(', '['):
+                opener = text[i]
+                closer = ')' if opener == '(' else ']'
+                sub = text[i:min(i + 50, n)].lower()
+                is_citation = any(
+                    sub.startswith(f"{opener}{kw}")
+                    for kw in [
+                        "source:", "sources:", "source :", "sources :",
+                        "source -", "sources -",
+                        "excerpt", "see excerpt", "doc:", "document:",
+                        "page ", "pages ", "p. ", "pp. "
+                    ]
+                )
+                if is_citation:
+                    depth = 1
+                    j = i + 1
+                    while j < n and depth > 0:
+                        if text[j] == opener:
+                            depth += 1
+                        elif text[j] == closer:
+                            depth -= 1
+                        j += 1
+                    # Remove trailing whitespace before the citation
+                    while result and result[-1] in (' ', '\t'):
+                        result.pop()
+                    i = j
+                    continue
+            result.append(text[i])
+            i += 1
+
+        cleaned = "".join(result)
+
+        # 2. Standalone or trailing source / excerpt lines
+        cleaned = re.sub(r"(?im)^\s*(?:Sources?|Excerpts?)\s*:.*$", "", cleaned)
+        cleaned = re.sub(r"(?i)\bSources?:\s*\[?Excerpt[^.\n]+\]?", "", cleaned)
+        cleaned = re.sub(r"(?i)\[Excerpt\s*\d+[^\]]*\]", "", cleaned)
+
+        # 3. Parenthetical page citations e.g. (Page 1), [Page 1], (p. 2)
+        cleaned = re.sub(r"(?i)\s*[\(\[]\s*(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\s*[\)\]]", "", cleaned)
+
+        # 4. Bolded or prefixed page markers like "- **(Page 1)**:" or "- (Page 1):" or "- Page 1:"
+        cleaned = re.sub(r"(?im)^\s*[-*•]\s*(?:\*\*)?\(?(?:Page|Pages|p\.|pp\.)\s*\d+(?:\s*[-–,]\s*\d+)*\)?(?:\*\*)?:?\s*", "- ", cleaned)
+        cleaned = re.sub(r"(?im)^\s*(?:Page|Pages)\s*\d+(?:\s*[-–,]\s*\d+)*:?\s*", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*[-*•]\s*:\s*", "- ", cleaned)
+
+        # 5. Clean empty parentheses and brackets
         cleaned = re.sub(r"\(\s*\)", "", cleaned)
         cleaned = re.sub(r"\[\s*\]", "", cleaned)
-        # Clean up repeated spaces
+
+        # 6. Spacing and punctuation normalization
+        cleaned = re.sub(r"\s+([.,;:!?])", r"\1", cleaned)
+        # Fix accidental double periods (e.g. "fact..") but preserve proper ellipsis ("...")
+        cleaned = re.sub(r"(?<!\.)\.\s*\.(?!\.)", ".", cleaned)
+        # 7. Remove markdown bold markers (**)
+        cleaned = cleaned.replace("**", "")
+        # Normalize multiple spaces and empty lines
         cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
 
     def _strict_context_grounded_answer(self, question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:

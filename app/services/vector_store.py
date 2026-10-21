@@ -76,7 +76,7 @@ class VectorStoreService:
         root_vdb = project_root / "vector_db"
         backend_vdb = project_root / "backend" / "vector_db"
 
-        if os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
             self.persist_dir = Path("/tmp/vector_db").resolve()
         elif persist_dir:
             self.persist_dir = Path(persist_dir).resolve()
