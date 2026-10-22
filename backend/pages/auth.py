@@ -10,7 +10,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr
 
 from .deps import chat_history
-from .schemas import SignupRequest, LoginRequest, UserResponse, AuthResponse
+from .schemas import SignupRequest, LoginRequest, UserResponse, AuthResponse, SignupResponse
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -76,7 +76,9 @@ def get_current_user(
 ) -> dict:
     """
     FastAPI dependency to authenticate requests.
-    Checks Authorization header first, then session_token cookie.
+    Validates token, verifies that the user still exists in the database,
+    and enforces that the user status is 'approved'.
+    Disabling or deleting a user invalidates their active sessions immediately.
     """
     token = None
     if credentials and credentials.credentials:
@@ -106,38 +108,59 @@ def get_current_user(
             user = None
 
     if not user:
-        # User is cryptographically verified from signed JWT token!
-        # Re-populate from trusted token claims and ensure cached in current serverless worker
-        user = {
-            "id": user_id,
-            "name": payload.get("name") or "User",
-            "email": payload.get("email") or "",
-            "created_at": datetime.utcnow().isoformat()
-        }
-        if chat_history:
-            try:
-                with chat_history._get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at)
-                        VALUES (?, ?, ?, '', ?)
-                    """, (user["id"], user["name"], user["email"], user["created_at"]))
-                    conn.commit()
-            except Exception:
-                pass
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account no longer exists. Please log in again."
+        )
+
+    # Real-time status enforcement: if disabled or not approved, reject request immediately
+    user_status = user.get("status", "pending")
+    if user_status != "approved":
+        if user_status == "disabled":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been disabled by the administrator."
+            )
+        elif user_status == "rejected":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been rejected by the administrator."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is waiting for admin approval."
+            )
 
     return {
         "id": user["id"],
         "name": user.get("name") or payload.get("name") or "User",
         "email": user.get("email") or payload.get("email") or "",
+        "role": user.get("role", "user"),
+        "status": user.get("status", "approved"),
         "created_at": user.get("created_at")
     }
 
-@auth_router.post("/signup", response_model=AuthResponse)
+def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    """Dependency that restricts endpoints exclusively to the administrator."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Administrator access required."
+        )
+    return current_user
+
+@auth_router.post("/signup", response_model=SignupResponse)
 def signup(req: SignupRequest, request: Request, response: Response):
+    """
+    Public registration endpoint.
+    - Blocks registration with ADMIN_EMAIL.
+    - All signups strictly receive role 'user' and status 'pending'.
+    - Client-sent role or status values are ignored.
+    - Login is blocked until approved by the admin.
+    """
     check_rate_limit(request)
     try:
-        # Validations
         name = req.name.strip()
         email = req.email.strip().lower()
         password = req.password
@@ -152,50 +175,25 @@ def signup(req: SignupRequest, request: Request, response: Response):
         if len(password) < 8:
             raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
 
+        # Block public signup with the ADMIN_EMAIL address
+        admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+        if admin_email and email == admin_email:
+            raise HTTPException(status_code=400, detail="This email cannot be used.")
+
         # Check unique email
         existing_user = chat_history.get_user_by_email(email)
         if existing_user:
             raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
         password_hash = hash_password(password)
+        # Always sets role='user' and status='pending'
         user = chat_history.create_user(name=name, email=email, password_hash=password_hash)
 
-        # Auto-create initial default "All files" chat session for the new user
-        try:
-            chat_history.create_session(
-                session_id=None,
-                doc_id="all",
-                title="All files",
-                user_id=user["id"]
-            )
-        except Exception as e:
-            print(f"[Auth] Notice creating initial session: {e}")
-
-        # Generate token
-        token = create_access_token({
-            "sub": user["id"],
-            "name": user["name"],
-            "email": user["email"]
-        })
-
-        # Set secure httpOnly cookie
-        is_https = bool(request.url.scheme == "https")
-        response.set_cookie(
-            key=COOKIE_NAME,
-            value=token,
-            httponly=True,
-            max_age=JWT_EXPIRATION_DAYS * 86400,
-            samesite="lax",
-            secure=is_https
+        return SignupResponse(
+            message="Your account is waiting for admin approval.",
+            status="pending",
+            email=user["email"]
         )
-
-        user_resp = UserResponse(
-            id=user["id"],
-            name=user["name"],
-            email=user["email"],
-            created_at=user.get("created_at")
-        )
-        return AuthResponse(token=token, user=user_resp)
     except HTTPException:
         raise
     except Exception as e:
@@ -205,6 +203,12 @@ def signup(req: SignupRequest, request: Request, response: Response):
 
 @auth_router.post("/login", response_model=AuthResponse)
 def login(req: LoginRequest, request: Request, response: Response):
+    """
+    Login endpoint.
+    - Verifies credentials.
+    - Enforces user status: pending, rejected, and disabled accounts are blocked with descriptive messages.
+    - Issues JWT token only for approved accounts.
+    """
     check_rate_limit(request)
     try:
         email = req.email.strip().lower()
@@ -217,10 +221,34 @@ def login(req: LoginRequest, request: Request, response: Response):
         if not verify_password(password, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Invalid email or password.")
 
+        # Status validation checks
+        user_status = user.get("status", "pending")
+        if user_status == "pending":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is waiting for admin approval."
+            )
+        elif user_status == "rejected":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been rejected by the administrator."
+            )
+        elif user_status == "disabled":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account has been disabled by the administrator."
+            )
+        elif user_status != "approved":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your account is not approved to access this application."
+            )
+
         token = create_access_token({
             "sub": user["id"],
             "name": user["name"],
-            "email": user["email"]
+            "email": user["email"],
+            "role": user.get("role", "user")
         })
 
         is_https = bool(request.url.scheme == "https")
@@ -237,6 +265,8 @@ def login(req: LoginRequest, request: Request, response: Response):
             id=user["id"],
             name=user["name"],
             email=user["email"],
+            role=user.get("role", "user"),
+            status=user.get("status", "approved"),
             created_at=user.get("created_at")
         )
         return AuthResponse(token=token, user=user_resp)
@@ -246,7 +276,6 @@ def login(req: LoginRequest, request: Request, response: Response):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
-
 
 @auth_router.post("/logout")
 def logout(response: Response):
@@ -259,8 +288,81 @@ def get_me(current_user: dict = Depends(get_current_user)):
         id=current_user["id"],
         name=current_user["name"],
         email=current_user["email"],
+        role=current_user.get("role", "user"),
+        status=current_user.get("status", "approved"),
         created_at=current_user.get("created_at")
     )
+
+# ==========================================
+# ADMIN USER MANAGEMENT ENDPOINTS
+# ==========================================
+
+@auth_router.get("/admin/users", response_model=List[UserResponse])
+def get_all_users(current_admin: dict = Depends(require_admin)):
+    """Admin endpoint to list all users with role and status."""
+    users = chat_history.list_all_users()
+    return [
+        UserResponse(
+            id=u["id"],
+            name=u["name"],
+            email=u["email"],
+            role=u.get("role", "user"),
+            status=u.get("status", "pending"),
+            created_at=u.get("created_at")
+        )
+        for u in users
+    ]
+
+@auth_router.post("/admin/users/{user_id}/approve")
+def approve_user(user_id: str, current_admin: dict = Depends(require_admin)):
+    """Admin approves a user account."""
+    target = chat_history.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    chat_history.update_user_status(user_id, "approved")
+    return {"message": "User approved successfully", "user_id": user_id, "status": "approved"}
+
+@auth_router.post("/admin/users/{user_id}/reject")
+def reject_user(user_id: str, current_admin: dict = Depends(require_admin)):
+    """Admin rejects a user account."""
+    target = chat_history.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target["id"] == current_admin["id"]:
+        raise HTTPException(status_code=400, detail="The administrator cannot reject their own account.")
+    chat_history.update_user_status(user_id, "rejected")
+    return {"message": "User rejected successfully", "user_id": user_id, "status": "rejected"}
+
+@auth_router.post("/admin/users/{user_id}/disable")
+def disable_user(user_id: str, current_admin: dict = Depends(require_admin)):
+    """Admin disables an active user account."""
+    target = chat_history.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target["id"] == current_admin["id"]:
+        raise HTTPException(status_code=400, detail="The administrator cannot disable their own account.")
+    chat_history.update_user_status(user_id, "disabled")
+    return {"message": "User disabled successfully", "user_id": user_id, "status": "disabled"}
+
+@auth_router.post("/admin/users/{user_id}/enable")
+def enable_user(user_id: str, current_admin: dict = Depends(require_admin)):
+    """Admin re-enables a disabled user account."""
+    target = chat_history.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    chat_history.update_user_status(user_id, "approved")
+    return {"message": "User re-enabled successfully", "user_id": user_id, "status": "approved"}
+
+@auth_router.delete("/admin/users/{user_id}")
+def delete_user(user_id: str, current_admin: dict = Depends(require_admin)):
+    """Admin deletes a user account and purges their private chats."""
+    target = chat_history.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if target["id"] == current_admin["id"]:
+        raise HTTPException(status_code=400, detail="The administrator cannot delete their own account.")
+    chat_history.delete_user(user_id)
+    return {"message": "User deleted successfully", "user_id": user_id}
 
 class CleanupRequest(BaseModel):
     retention_days: Optional[int] = None

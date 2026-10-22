@@ -94,6 +94,9 @@ export function AuthProvider({ children }) {
     setUser(userData);
     try {
       localStorage.setItem('auth_token', newToken);
+      localStorage.setItem('task_rag_just_logged_in', 'true');
+      localStorage.removeItem('task_rag_active_chat_id');
+      localStorage.removeItem('task_rag_active_doc_id');
     } catch {}
     updateAuthHeader(newToken);
     return userData;
@@ -105,14 +108,20 @@ export function AuthProvider({ children }) {
       email,
       password,
     });
-    const { token: newToken, user: userData } = res.data;
-    setToken(newToken);
-    setUser(userData);
-    try {
-      localStorage.setItem('auth_token', newToken);
-    } catch {}
-    updateAuthHeader(newToken);
-    return userData;
+    // If account requires approval (status == 'pending'), do not log in automatically
+    if (res.data?.token && res.data?.user?.status === 'approved') {
+      const { token: newToken, user: userData } = res.data;
+      setToken(newToken);
+      setUser(userData);
+      try {
+        localStorage.setItem('auth_token', newToken);
+        localStorage.setItem('task_rag_just_logged_in', 'true');
+        localStorage.removeItem('task_rag_active_chat_id');
+        localStorage.removeItem('task_rag_active_doc_id');
+      } catch {}
+      updateAuthHeader(newToken);
+    }
+    return res.data;
   };
 
   const logout = async () => {

@@ -2,20 +2,22 @@ import asyncio
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 from .deps import vector_store, llm_service, firebase_service, chat_history
 from .schemas import UploadResponse
-from .auth import get_current_user
+from .auth import get_current_user, require_admin
 
 router = APIRouter(tags=["upload"])
+
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB
 
 @router.post("/api/upload", response_model=UploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_admin: dict = Depends(require_admin)
 ):
     """
     Accepts UploadFile (.pdf, .txt, .docx, .doc), extracts text with PyMuPDF / python-docx,
     splits extracted text using RecursiveCharacterTextSplitter (chunk_size=1000, chunk_overlap=200),
-    generates embeddings, and stores in isolated per-user collection and directory.
-    Returns: { "doc_id": str, "filename": str, "chunks": int, "suggested_questions": list[str] }
+    generates embeddings, and stores in the single shared ChromaDB collection and file store.
+    Strictly restricted to the administrator (returns 403 for non-admins).
     """
     if not file.filename:
         raise HTTPException(
@@ -30,8 +32,6 @@ async def upload_document(
             detail=f"Unsupported file type: .{ext}. Supported formats are .pdf, .txt, .docx, and .doc."
         )
 
-    user_id = current_user["id"]
-
     try:
         content = await file.read()
         if not content or len(content) == 0:
@@ -40,30 +40,34 @@ async def upload_document(
                 detail="Uploaded file is empty."
             )
 
-        # Uses PyMuPDF / python-docx + RecursiveCharacterTextSplitter + ChromaDB isolated collection
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File size exceeds maximum allowed limit of 25MB."
+            )
+
+        # Uses PyMuPDF / python-docx + RecursiveCharacterTextSplitter + shared ChromaDB collection
         result = await asyncio.to_thread(
             vector_store.index_document,
             file.filename,
             content,
             llm_service,
-            firebase_service,
-            user_id
+            firebase_service
         )
-        # Register new active file in persistent SQLite files table scoped to user_id
+        # Register new active file in persistent shared SQLite files table
         if result and result.get("doc_id"):
             chat_history.register_file(
                 doc_id=result["doc_id"],
                 filename=result.get("filename", file.filename),
-                status="active",
-                user_id=user_id
+                status="active"
             )
-            # Auto-create initial chat session for this file
+            # Auto-create initial chat session for the admin
             try:
                 chat_history.create_session(
                     session_id=None,
                     doc_id=result["doc_id"],
                     title=result.get("filename", file.filename),
-                    user_id=user_id
+                    user_id=current_admin["id"]
                 )
             except Exception as se:
                 print(f"[Upload] Notice auto-creating session: {se}")

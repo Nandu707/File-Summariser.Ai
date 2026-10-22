@@ -1,27 +1,32 @@
 import asyncio
 from typing import Optional
 import urllib.parse
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, status
 from fastapi.responses import FileResponse
 from .deps import vector_store, llm_service, chat_history, firebase_service
-from .auth import get_current_user
+from .auth import get_current_user, require_admin
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 @router.get("")
 @router.get("/")
 def get_documents(current_user: dict = Depends(get_current_user)):
-    """Returns list of indexed documents for the current authenticated user."""
-    user_id = current_user["id"]
-    docs = vector_store.list_documents(user_id=user_id)
+    """
+    Returns list of all active shared documents uploaded by the administrator.
+    All approved users have read-only visibility into admin documents.
+    """
+    docs = vector_store.list_documents()
     for d in docs:
-        chat_history.register_file(d["doc_id"], d.get("filename", "Document"), "active", user_id=user_id)
+        chat_history.register_file(d["doc_id"], d.get("filename", "Document"), "active")
     return docs
 
 @router.delete("/{doc_id}")
-def delete_document(doc_id: str, current_user: dict = Depends(get_current_user)):
-    """Deletes an indexed document owned by current_user while preserving chats as read-only."""
-    user_id = current_user["id"]
+def delete_document(doc_id: str, current_admin: dict = Depends(require_admin)):
+    """
+    Deletes an indexed document. Strictly restricted to the administrator.
+    Removes chunks and embeddings from the shared ChromaDB index, while preserving
+    existing chat sessions as read-only with 'File deleted' status.
+    """
     reg = vector_store._get_registry()
     target_id = doc_id
     target_doc = reg.get(doc_id)
@@ -32,23 +37,17 @@ def delete_document(doc_id: str, current_user: dict = Depends(get_current_user))
                 target_doc = info
                 break
 
-    if target_doc:
-        # Check ownership
-        owner_id = target_doc.get("user_id")
-        if owner_id and str(owner_id) != str(user_id):
-            raise HTTPException(status_code=403, detail="Forbidden: You do not own this document.")
-
     filename = target_doc.get("filename") if target_doc else None
 
     # Perform vector store, file system, and registry deletion
-    success = vector_store.delete_document(doc_id, user_id=user_id)
+    success = vector_store.delete_document(doc_id)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found or could not be deleted")
 
     # Mark file status as deleted in chat history so chats remain viewable and read-only
-    chat_history.mark_file_deleted(target_id, user_id=user_id)
+    chat_history.mark_file_deleted(target_id)
     if doc_id != target_id:
-        chat_history.mark_file_deleted(doc_id, user_id=user_id)
+        chat_history.mark_file_deleted(doc_id)
 
     # Clean Firebase Firestore document record and storage if active
     if getattr(firebase_service, "is_active", False):
@@ -63,6 +62,53 @@ def delete_document(doc_id: str, current_user: dict = Depends(get_current_user))
         "message": "Document removed from index and registry; chat preserved as read-only",
         "doc_id": target_id,
         "filename": filename
+    }
+
+@router.post("/{doc_id}/replace")
+async def replace_document(
+    doc_id: str,
+    file: UploadFile = File(...),
+    current_admin: dict = Depends(require_admin)
+):
+    """
+    Replaces an existing document with a new version.
+    Strictly restricted to the administrator (403 for non-admins).
+    Purges old chunks from the index so no stale content remains, then indexes the replacement file.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No replacement file provided.")
+
+    ext = file.filename.lower().split(".")[-1]
+    if ext not in ["pdf", "txt", "md", "docx", "doc"]:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded replacement file is empty.")
+
+    # 1. Purge old document from index and file store completely (no stale content left)
+    vector_store.delete_document(doc_id)
+
+    # 2. Index new replacement document into shared index
+    result = await asyncio.to_thread(
+        vector_store.index_document,
+        file.filename,
+        content,
+        llm_service,
+        firebase_service
+    )
+
+    if result and result.get("doc_id"):
+        chat_history.register_file(
+            doc_id=result["doc_id"],
+            filename=result.get("filename", file.filename),
+            status="active"
+        )
+
+    return {
+        "message": "Document successfully replaced and re-indexed with no stale content",
+        "old_doc_id": doc_id,
+        "new_document": result
     }
 
 @router.get("/{doc_id}/pages/{page_num}")

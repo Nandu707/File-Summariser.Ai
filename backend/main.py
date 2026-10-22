@@ -88,8 +88,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Startup logging for debugging (wrapped safely)
+# Startup initialization: verify fixed administrator account and run legacy private file migration
 try:
+    if chat_history and hasattr(chat_history, "ensure_admin_account"):
+        admin_uid = chat_history.ensure_admin_account()
+        admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+        if admin_uid:
+            print(f"[startup] Fixed administrator account verified: {admin_email} (ID: {admin_uid})")
+    if vector_store and hasattr(vector_store, "migrate_legacy_private_files"):
+        purged = vector_store.migrate_legacy_private_files()
+        if purged:
+            print(f"[startup] Completed migration of legacy private files: purged {len(purged)} items.")
     if vector_store:
         print(f"[startup] Vector DB path: {vector_store.persist_dir}")
         print(f"[startup] Collection: {vector_store.collection.name} ({vector_store.collection.count()} chunks)")
@@ -97,7 +106,7 @@ try:
     if llm_service:
         print(f"[startup] Gemini API key configured: {bool(llm_service.gemini_api_key)}")
 except Exception as e:
-    print(f"[startup] Notice during startup logging: {e}")
+    print(f"[startup] Notice during startup initialization: {e}")
 
 # ROUTE ALL PAGES AND COMPONENTS FROM MAIN.PY
 app.include_router(auth_router)

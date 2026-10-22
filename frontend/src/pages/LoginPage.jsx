@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage({ onNavigateToSignup }) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -68,8 +70,8 @@ export default function LoginPage({ onNavigateToSignup }) {
     } catch (err) {
       const msg = err.response?.data?.detail || err.message || 'Failed to sign in. Please check your credentials.';
       setError(msg);
-      // Mark outer lines red on invalid credentials or validation failures
-      if (err.response?.status === 401 || err.response?.status === 400) {
+      // Mark fields red only on actual invalid credentials
+      if (err.response?.status === 401) {
         setEmailError('Invalid email or password.');
         setPasswordError('Invalid email or password.');
       }
@@ -77,6 +79,8 @@ export default function LoginPage({ onNavigateToSignup }) {
       setIsSubmitting(false);
     }
   };
+
+  const isPendingWarning = error && error.toLowerCase().includes('approval');
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-indigo-50/70 via-slate-50 to-violet-50/60 relative overflow-hidden px-4 font-sans text-slate-800">
@@ -93,17 +97,21 @@ export default function LoginPage({ onNavigateToSignup }) {
             </svg>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Welcome Back</h1>
-          <p className="text-sm text-slate-500 mt-1.5">Sign in to access your private documents and chats</p>
+          <p className="text-sm text-slate-500 mt-1.5">Sign in to access your documents and chats</p>
         </div>
 
         {/* Login Card */}
         <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
           {error && (
-            <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-red-700 text-sm animate-in fade-in slide-in-from-top-1">
-              <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className={`mb-6 p-4 rounded-xl border flex items-start gap-3 text-sm animate-in fade-in slide-in-from-top-1 ${
+              isPendingWarning 
+                ? 'bg-amber-50 border-amber-200 text-amber-800' 
+                : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              <svg className={`w-5 h-5 shrink-0 mt-0.5 ${isPendingWarning ? 'text-amber-600' : 'text-red-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>{error}</span>
+              <span className="font-medium">{error}</span>
             </div>
           )}
 
@@ -152,17 +160,30 @@ export default function LoginPage({ onNavigateToSignup }) {
                   </svg>
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={handlePasswordChange}
                   onBlur={() => setPasswordError(validatePassword(password))}
                   placeholder="••••••••"
-                  className={`w-full pl-10 pr-4 py-3 rounded-xl text-sm transition-all shadow-sm focus:outline-none ${
+                  className={`w-full pl-10 pr-11 py-3 rounded-xl text-sm transition-all shadow-sm focus:outline-none ${
                     passwordError
                       ? 'bg-red-50/30 border-2 border-red-500 text-red-900 placeholder-red-300 ring-2 ring-red-500/20 focus:ring-red-500 focus:border-red-500'
                       : 'bg-slate-50/80 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent'
                   }`}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 focus:outline-none transition-colors cursor-pointer"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4 text-slate-500 hover:text-slate-700" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-slate-400 hover:text-slate-600" />
+                  )}
+                </button>
               </div>
               {passwordError && (
                 <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1 font-medium animate-in fade-in">

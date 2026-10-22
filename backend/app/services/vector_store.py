@@ -118,26 +118,97 @@ class VectorStoreService:
         self._sync_legacy_collections()
         self._sync_backend_db_if_needed(backend_vdb)
         self._cleanup_orphaned_files()
+        self.migrate_legacy_private_files()
 
     def get_user_files_dir(self, user_id: Optional[str] = None) -> Path:
-        """Returns isolated per-user directory for raw documents and page caches."""
-        if not user_id:
-            return self.files_dir
-        clean_uid = re.sub(r"[^a-zA-Z0-9_\-]", "_", str(user_id).strip())
-        user_dir = self.files_dir / clean_uid
-        user_dir.mkdir(parents=True, exist_ok=True)
-        return user_dir
+        """Returns the single shared directory for raw documents and page caches."""
+        return self.files_dir
 
     def get_user_collection(self, user_id: Optional[str] = None):
-        """Returns isolated per-user ChromaDB collection."""
-        if not user_id:
-            return self.collection
-        clean_uid = re.sub(r"[^a-zA-Z0-9_]", "_", str(user_id).strip())
-        col_name = f"user_{clean_uid}"
-        return self.client.get_or_create_collection(
-            name=col_name,
-            metadata={"user_id": str(user_id), "description": f"Private chunks for user {user_id}"}
-        )
+        """Returns the single shared ChromaDB collection for all documents, auto-recovering if invalidated."""
+        try:
+            if hasattr(self, "collection") and self.collection is not None:
+                self.collection.count()
+                return self.collection
+        except Exception:
+            pass
+
+        try:
+            self.collection = self.client.get_or_create_collection(
+                name="task_rag_vector_store",
+                metadata={"description": "High-accuracy chunks split by RecursiveCharacterTextSplitter"}
+            )
+        except Exception:
+            self.client = chromadb.PersistentClient(path=str(self.persist_dir))
+            self.collection = self.client.get_or_create_collection(
+                name="task_rag_vector_store",
+                metadata={"description": "High-accuracy chunks split by RecursiveCharacterTextSplitter"}
+            )
+        return self.collection
+
+    def migrate_legacy_private_files(self) -> List[Dict[str, Any]]:
+        """
+        One-time migration to remove legacy per-user private files and per-user collections.
+        Existing private files from earlier versions: do not expose them to anyone.
+        Delete them (and their index data) in a one-time migration.
+        """
+        removed_items = []
+        reg_file = self.persist_dir / "documents_registry.json"
+        if reg_file.exists():
+            try:
+                with open(reg_file, "r", encoding="utf-8") as f:
+                    reg = json.load(f)
+            except Exception:
+                reg = {}
+
+            modified = False
+            for doc_id, info in list(reg.items()):
+                # Delete any document that was tagged with a legacy per-user user_id
+                if info.get("user_id"):
+                    fn = info.get("filename", "Unknown")
+                    uid = info.get("user_id")
+                    removed_items.append({"doc_id": doc_id, "filename": fn, "user_id": uid})
+                    print(f"[Migration] Purged legacy private document: {fn} ({doc_id}) owned by {uid}")
+                    try:
+                        self.collection.delete(where={"doc_id": doc_id})
+                    except Exception:
+                        pass
+                    del reg[doc_id]
+                    modified = True
+
+            if modified:
+                try:
+                    with open(reg_file, "w", encoding="utf-8") as f:
+                        json.dump(reg, f, indent=2)
+                except Exception as we:
+                    print(f"[Migration] Error saving updated registry: {we}")
+
+        # Delete any legacy per-user subdirectories under files_dir
+        if self.files_dir.exists():
+            import shutil
+            for item in list(self.files_dir.iterdir()):
+                if item.is_dir() and item.name.startswith("user_"):
+                    try:
+                        shutil.rmtree(item)
+                        removed_items.append({"directory": item.name, "type": "user_directory"})
+                        print(f"[Migration] Removed legacy per-user directory: {item.name}")
+                    except Exception as e:
+                        print(f"[Migration] Error removing legacy directory {item}: {e}")
+
+        # Delete any legacy private user collections in ChromaDB
+        try:
+            for col in self.client.list_collections():
+                if col.name.startswith("user_"):
+                    try:
+                        self.client.delete_collection(col.name)
+                        removed_items.append({"collection": col.name, "type": "user_collection"})
+                        print(f"[Migration] Removed legacy private collection: {col.name}")
+                    except Exception as e:
+                        print(f"[Migration] Error deleting collection {col.name}: {e}")
+        except Exception:
+            pass
+
+        return removed_items
 
     def _sync_backend_db_if_needed(self, backend_vdb: Path):
         """Merges any chunks or documents from legacy backend/vector_db into canonical vector_db."""

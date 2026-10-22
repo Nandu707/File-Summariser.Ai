@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-STRICT_CONTEXT_SYSTEM_PROMPT = """You are an accurate, helpful assistant answering questions strictly based on the provided uploaded file excerpts. Answer using information from all relevant files. If a question spans several files, combine them into a clear, cohesive answer.
-Do NOT include inline source citations, excerpt references, document tags, or page markers (such as '(Source: ...)', '[Excerpt ...]', '(Page X)', etc.) in your answer. Do NOT use double asterisks (**) or markdown bold formatting in your response. Present the information directly and cleanly. If the answer is not in any uploaded file, say so instead of guessing."""
+STRICT_CONTEXT_SYSTEM_PROMPT = """You are an accurate, helpful assistant answering questions strictly based on the provided uploaded file excerpts. Answer only from these currently active files. If a question spans several files, combine them into a clear, cohesive answer.
+Present all information directly and cleanly, cite the source file names when referencing facts, and do not use double asterisks (**) or markdown bolding in your response. If the answer is not in any uploaded file, say so clearly instead of guessing."""
 
 class LLMService:
     GEMINI_MODELS = [
@@ -60,12 +60,14 @@ class LLMService:
         question: str,
         chunks: List[str],
         metadatas: Optional[List[Dict[str, Any]]] = None,
-        history: Optional[List[Dict[str, str]]] = None
+        history: Optional[List[Dict[str, str]]] = None,
+        is_retry: bool = False
     ) -> str:
         """
         Passes retrieved chunks to the LLM with a strict context-only prompt,
         returning the answer. Primary: Google Gemini; Secondary: OpenAI; Fallback: offline grounded.
         Includes leak-free conversation history if provided.
+        When is_retry is True, explores alternative perspectives/details with higher temperature.
         """
         if not chunks:
             return "The answer is not in any uploaded file."
@@ -92,6 +94,14 @@ class LLMService:
             if hist_parts:
                 history_str = "\n\n--- PREVIOUS CONVERSATION (ACTIVE FILES ONLY) ---\n" + "\n".join(hist_parts) + "\n--- END CONVERSATION ---\n"
 
+        retry_instructions = ""
+        if is_retry:
+            retry_instructions = (
+                "- The user clicked 'Try again' to ask for an alternative, refreshed response to this question.\n"
+                "- Provide a different formulation and alternative perspective: synthesize related facts, provide clear structured points, or elaborate on aspects of the excerpts that offer a fresh, distinct answer.\n"
+                "- If the exact information is not explicitly detailed, provide the closest relevant topics, concepts, or helpful explanations found in the uploaded documents related to the question.\n"
+            )
+
         prompt = (
             f"{STRICT_CONTEXT_SYSTEM_PROMPT}\n\n"
             f"Available uploaded files: {files_list_str}\n\n"
@@ -101,7 +111,8 @@ class LLMService:
             f"{history_str}\n"
             f"Question: {question}\n\n"
             f"Important instructions for the response:\n"
-            f"- Base your answer strictly on the provided excerpts.\n"
+            f"- Base your answer on the provided excerpts.\n"
+            f"{retry_instructions}"
             f"- Do NOT include inline citations or source references like '(Source: ...)' or '[Excerpt ...]' or '(Page ...)'.\n"
             f"- Do NOT use double asterisks (**) or markdown bolding in your response.\n"
             f"- Present all information directly, cleanly, and naturally.\n\n"
@@ -109,6 +120,8 @@ class LLMService:
         )
 
         ans = None
+        temp = 0.75 if is_retry else 0.0
+
         # 1. Google Gemini API (if key configured)
         gemini_client = self._get_gemini_client()
         if gemini_client:
@@ -120,7 +133,7 @@ class LLMService:
                             model=model_name,
                             contents=prompt,
                             config=types.GenerateContentConfig(
-                                temperature=0.0,
+                                temperature=temp,
                             )
                         )
                         if response and response.text:
@@ -147,7 +160,7 @@ class LLMService:
                 res = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=messages_payload,
-                    temperature=0.0,
+                    temperature=temp,
                 )
                 content = res.choices[0].message.content
                 if content:
@@ -157,7 +170,7 @@ class LLMService:
 
         # 3. Built-in Strict Context-Only Grounded Fallback (Runs 100% offline with zero external API key requirements)
         if not ans:
-            ans = self._strict_context_grounded_answer(question, chunks, metadatas)
+            ans = self._strict_context_grounded_answer(question, chunks, metadatas, is_retry=is_retry)
 
         return self._clean_page_numbers_from_answer(ans)
 
@@ -236,10 +249,17 @@ class LLMService:
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned.strip()
 
-    def _strict_context_grounded_answer(self, question: str, chunks: List[str], metadatas: Optional[List[Dict[str, Any]]] = None) -> str:
+    def _strict_context_grounded_answer(
+        self,
+        question: str,
+        chunks: List[str],
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        is_retry: bool = False
+    ) -> str:
         """
         Synthesizes a strict context-grounded answer based strictly on the retrieved top chunks.
         When no LLM API is available, this provides the best possible offline answer.
+        When is_retry is True, offers alternative relevant sentences from the document.
         """
         q_tokens = set(re.findall(r"\w+", question.lower()))
         stopwords = {
@@ -278,27 +298,24 @@ class LLMService:
                     })
 
         if not matched_sentences:
-            # No keyword overlap found — provide the most relevant chunk content directly
-            # instead of refusing to answer. The chunks were already semantically retrieved
-            # by ChromaDB, so they ARE the most relevant content.
             fallback_sentences = []
             for idx, chunk in enumerate(chunks):
                 page_num = 1
                 if metadatas and idx < len(metadatas) and isinstance(metadatas[idx], dict):
                     page_num = metadatas[idx].get("page", 1)
-                # Get all meaningful sentences from the chunk
                 sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", chunk.replace("\n", " ")) if len(s.strip()) > 20]
-                for sent in sentences[:2]:  # Take top 2 sentences per chunk
+                slice_to_take = sentences[1:3] if (is_retry and len(sentences) > 2) else sentences[:2]
+                for sent in slice_to_take:
                     fallback_sentences.append({"sentence": sent, "page": page_num})
                 if len(fallback_sentences) >= 5:
                     break
             if fallback_sentences:
                 bullet_points = "\n".join([f"- \"{it['sentence']}\"" for it in fallback_sentences])
-                return f"Based on the most relevant excerpts from the document:\n\n{bullet_points}\n\n*These are the closest matching sections retrieved from the document.*"
-            # Absolute last resort: show raw chunk content
+                label = "Alternative excerpts and relevant sections from the documents:" if is_retry else "Based on the most relevant excerpts from the document:"
+                return f"{label}\n\n{bullet_points}"
             if chunks:
-                first_chunk = chunks[0].strip()[:500]
-                return f"Based on the document content:\n\n> {first_chunk}\n\n*This is the most relevant section found in the document.*"
+                chunk_slice = chunks[1].strip()[:500] if (is_retry and len(chunks) > 1) else chunks[0].strip()[:500]
+                return f"Related section from the uploaded files:\n\n> {chunk_slice}"
 
         # Sort sentences by keyword score
         matched_sentences.sort(key=lambda s: (-s["score"], s["len"]))
@@ -307,7 +324,8 @@ class LLMService:
         selected = []
         seen = set()
         pages_cited = set()
-        for item in matched_sentences:
+        candidates = matched_sentences[1:] if (is_retry and len(matched_sentences) > 2) else matched_sentences
+        for item in candidates:
             clean = item["sentence"]
             if clean not in seen:
                 seen.add(clean)
@@ -316,10 +334,14 @@ class LLMService:
                 if len(selected) >= 3:
                     break
 
+        if not selected and matched_sentences:
+            selected = matched_sentences[:3]
+
         bullet_points = "\n".join([f"- \"{it['sentence']}\"" for it in selected])
+        heading = "Alternative relevant points from the uploaded documents:" if is_retry else "Based strictly on the provided context:"
 
         return (
-            f"Based strictly on the provided context:\n\n"
+            f"{heading}\n\n"
             f"{bullet_points}"
         )
 

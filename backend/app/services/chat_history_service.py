@@ -7,6 +7,48 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
 from datetime import datetime, timedelta
 
+NO_INFO_PATTERNS = [
+    r"do not contain any information",
+    r"does not contain any information",
+    r"do not contain information",
+    r"does not contain information",
+    r"contain no information",
+    r"contains no information",
+    r"provide no information",
+    r"provides no information",
+    r"not in any uploaded",
+    r"not in the uploaded",
+    r"not available in any of the uploaded",
+    r"not available in this document",
+    r"not available in the uploaded",
+    r"not found in the provided",
+    r"not found in any of the provided",
+    r"no information (?:is )?(?:found|available|provided|detailed)?.*(?:in|from) the provided",
+    r"no information (?:is )?(?:found|available|provided|detailed)?.*(?:in|from) any of the",
+    r"there (?:is|are) no (?:specific )?(?:information|details|mention|instructions)",
+    r"(?:provided|uploaded) (?:documents?|files?|excerpts?|context) (?:do|does) not (?:contain|mention|have|provide|detail)",
+    r"(?:documents?|files?|excerpts?|context) (?:do|does) not (?:contain|mention|have|provide|detail) any information",
+    r"(?:documents?|files?|excerpts?|context) (?:do|does) not (?:contain|mention|have|provide|detail) information",
+    r"(?:documents?|files?|excerpts?) provided (?:do|does) not (?:contain|mention|have|provide|detail)",
+    r"none of the (?:provided|uploaded) (?:documents?|files?|excerpts?) (?:contain|mention|have|provide)",
+    r"could not find any information",
+    r"cannot find any information",
+    r"based on the (?:uploaded|provided) (?:documents?|files?|excerpts?),? there (?:is|are) no",
+    r"(?:does|do) not have any information",
+    r"not mentioned in the (?:provided|uploaded)",
+    r"cannot be answered (?:from|based on) the (?:provided|uploaded)",
+]
+
+def is_no_info_answer(answer: str) -> bool:
+    """Returns True if the LLM response indicates that documents do not contain information about the question."""
+    if not answer or not isinstance(answer, str):
+        return False
+    text = answer.strip().lower()
+    for pattern in NO_INFO_PATTERNS:
+        if re.search(pattern, text):
+            return True
+    return False
+
 class ChatHistoryService:
     """
     SQLite persistent storage for chat sessions, messages, file statuses, and user accounts.
@@ -84,12 +126,33 @@ class ChatHistoryService:
                     name TEXT NOT NULL,
                     email TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    status TEXT NOT NULL DEFAULT 'pending',
                     created_at TEXT NOT NULL
                 )
             """)
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)
             """)
+
+            # Migrations for users table
+            user_cols = [col["name"] for col in cursor.execute("PRAGMA table_info(users)").fetchall()]
+            if "role" not in user_cols:
+                try:
+                    cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+                except Exception:
+                    pass
+            if "status" not in user_cols:
+                try:
+                    cursor.execute("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+                except Exception:
+                    pass
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users (role)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_status ON users (status)")
+
+            # Seed / synchronize fixed administrator account from environment variables
+            self._ensure_admin_account_internal(cursor)
 
             # 1. Files table: tracking active/deleted status of uploaded documents
             cursor.execute("""
@@ -183,14 +246,81 @@ class ChatHistoryService:
             # Populate chat_id from doc_id where missing
             cursor.execute("UPDATE messages SET chat_id = doc_id WHERE chat_id IS NULL OR chat_id = ''")
 
+            # Clean up old stored messages where assistant states documents do not contain information
+            try:
+                cursor.execute("""
+                    UPDATE messages
+                    SET sources = '[]', source_details = '[]'
+                    WHERE role = 'assistant' AND (
+                        LOWER(content) LIKE '%do not contain%' OR
+                        LOWER(content) LIKE '%does not contain%' OR
+                        LOWER(content) LIKE '%contain no information%' OR
+                        LOWER(content) LIKE '%not in any uploaded%' OR
+                        LOWER(content) LIKE '%no information%' OR
+                        LOWER(content) LIKE '%not found in the provided%'
+                    )
+                """)
+            except Exception:
+                pass
+
             conn.commit()
 
     # ==========================================
     # USER MANAGEMENT & AUTH STORAGE
     # ==========================================
 
+    def _ensure_admin_account_internal(self, cursor):
+        """
+        Internal helper to synchronize the fixed administrator account from environment variables.
+        Reads ADMIN_EMAIL and ADMIN_PASSWORD.
+        Sets role='admin' and status='approved'.
+        Enforces that all other accounts have role='user'.
+        """
+        admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+        admin_pw = os.getenv("ADMIN_PASSWORD", "").strip()
+        if not admin_email or not admin_pw:
+            return
+
+        import bcrypt
+        salt = bcrypt.gensalt(rounds=12)
+        pw_hash = bcrypt.hashpw(admin_pw.encode("utf-8"), salt).decode("utf-8")
+        now_iso = datetime.utcnow().isoformat()
+
+        cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (admin_email,))
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute("""
+                UPDATE users 
+                SET role = 'admin', status = 'approved', password_hash = ? 
+                WHERE id = ?
+            """, (pw_hash, existing["id"]))
+        else:
+            admin_id = f"user_{uuid.uuid4().hex[:12]}"
+            cursor.execute("""
+                INSERT INTO users (id, name, email, password_hash, role, status, created_at)
+                VALUES (?, 'Administrator', ?, ?, 'admin', 'approved', ?)
+            """, (admin_id, admin_email, pw_hash, now_iso))
+
+        # Enforce exactly one admin: all other accounts get role 'user'
+        cursor.execute("UPDATE users SET role = 'user' WHERE LOWER(email) != ?", (admin_email,))
+
+    def ensure_admin_account(self, admin_email: Optional[str] = None, admin_password: Optional[str] = None):
+        """Public callable method to ensure the fixed admin account exists and is approved."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if admin_email:
+                os.environ["ADMIN_EMAIL"] = admin_email
+            if admin_password:
+                os.environ["ADMIN_PASSWORD"] = admin_password
+            self._ensure_admin_account_internal(cursor)
+            conn.commit()
+
     def create_user(self, name: str, email: str, password_hash: str) -> Dict[str, Any]:
-        """Creates a new user record with validation, initial 'All files' session, and Firebase sync."""
+        """
+        Creates a new user record.
+        All new sign-ups strictly receive role 'user' and status 'pending'.
+        Client-provided roles or statuses are completely ignored.
+        """
         clean_email = email.strip().lower()
         clean_name = name.strip()
         user_id = f"user_{uuid.uuid4().hex[:12]}"
@@ -199,8 +329,8 @@ class ChatHistoryService:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO users (id, name, email, password_hash, role, status, created_at)
+                VALUES (?, ?, ?, ?, 'user', 'pending', ?)
             """, (user_id, clean_name, clean_email, password_hash, now_iso))
             conn.commit()
 
@@ -209,10 +339,12 @@ class ChatHistoryService:
             "name": clean_name,
             "email": clean_email,
             "password_hash": password_hash,
+            "role": "user",
+            "status": "pending",
             "created_at": now_iso
         }
 
-        # Synchronize to Firebase Firestore 'users' collection
+        # Synchronize to Firebase Firestore 'users' collection if active
         if self.firebase_service and getattr(self.firebase_service, "is_active", False):
             try:
                 self.firebase_service.save_user(user_dict)
@@ -222,21 +354,16 @@ class ChatHistoryService:
         # Seed initial 'All files' chat session for this user
         self.create_session(scope="all", title="All files", user_id=user_id)
 
-        return {
-            "id": user_id,
-            "name": clean_name,
-            "email": clean_email,
-            "created_at": now_iso
-        }
+        return user_dict
 
     def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Retrieves user by email address from SQLite, falling back to Firebase Firestore."""
+        """Retrieves user by email address including role and status."""
         if not email:
             return None
         clean_email = email.strip().lower()
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, email, password_hash, created_at FROM users WHERE LOWER(email) = ?", (clean_email,))
+            cursor.execute("SELECT id, name, email, password_hash, role, status, created_at FROM users WHERE LOWER(email) = ?", (clean_email,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -249,8 +376,8 @@ class ChatHistoryService:
                     with self._get_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute("""
-                            INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT OR IGNORE INTO users (id, name, email, password_hash, role, status, created_at)
+                            VALUES (?, ?, ?, ?, 'user', 'pending', ?)
                         """, (
                             fb_user["id"],
                             fb_user.get("name", ""),
@@ -266,40 +393,54 @@ class ChatHistoryService:
         return None
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves user by user ID from SQLite, falling back to Firebase Firestore."""
+        """Retrieves user by user ID including role and status."""
         if not user_id:
             return None
         clean_id = user_id.strip()
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, email, password_hash, created_at FROM users WHERE id = ?", (clean_id,))
+            cursor.execute("SELECT id, name, email, password_hash, role, status, created_at FROM users WHERE id = ?", (clean_id,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
 
-        # Fallback to Firebase Firestore 'users' collection
-        if self.firebase_service and getattr(self.firebase_service, "is_active", False):
-            try:
-                fb_user = self.firebase_service.get_user_by_id(clean_id)
-                if fb_user and fb_user.get("id"):
-                    with self._get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("""
-                            INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (
-                            fb_user["id"],
-                            fb_user.get("name", ""),
-                            fb_user.get("email", ""),
-                            fb_user.get("password_hash", ""),
-                            fb_user.get("created_at", datetime.utcnow().isoformat())
-                        ))
-                        conn.commit()
-                    return fb_user
-            except Exception as fe:
-                print(f"[ChatHistory] Notice fetching user from Firebase by ID: {fe}")
-
         return None
+
+    def list_all_users(self) -> List[Dict[str, Any]]:
+        """Returns all registered users for the admin dashboard, ordered by sign-up date."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, name, email, role, status, created_at 
+                FROM users 
+                ORDER BY created_at DESC
+            """)
+            return [dict(r) for r in cursor.fetchall()]
+
+    def update_user_status(self, user_id: str, new_status: str) -> bool:
+        """Updates user status (pending, approved, rejected, disabled)."""
+        valid_statuses = {"pending", "approved", "rejected", "disabled"}
+        if new_status not in valid_statuses:
+            return False
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET status = ? WHERE id = ?", (new_status, user_id.strip()))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_user(self, user_id: str) -> bool:
+        """
+        Deletes a user account and removes all their chat sessions and messages.
+        Does NOT delete any files or accounts of other users.
+        """
+        clean_uid = user_id.strip()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM messages WHERE user_id = ?", (clean_uid,))
+            cursor.execute("DELETE FROM chat_sessions WHERE user_id = ?", (clean_uid,))
+            cursor.execute("DELETE FROM users WHERE id = ?", (clean_uid,))
+            conn.commit()
+            return cursor.rowcount > 0
 
     # ==========================================
     # FILE MANAGEMENT (STATUS TRACKING & SOFT DELETION)
@@ -520,6 +661,7 @@ class ChatHistoryService:
                 "file_id": r["file_id"],
                 "file_name": r["file_name"],
                 "is_file_deleted": is_deleted,
+                "is_deleted": is_deleted,
                 "created_at": r["created_at"],
                 "updated_at": r["updated_at"],
                 "user_id": r["user_id"],
@@ -588,10 +730,14 @@ class ChatHistoryService:
 
             query += """
                 GROUP BY s.id
-                HAVING COUNT(m.id) > 0 OR s.id LIKE 'chat_%' OR s.id = 'all'
+                HAVING COUNT(m.id) > 0 OR s.id = (
+                    SELECT id FROM chat_sessions 
+                    WHERE (? IS NULL OR user_id = ?) 
+                    ORDER BY updated_at DESC LIMIT 1
+                )
                 ORDER BY s.updated_at DESC
             """
-            cursor.execute(query, params)
+            cursor.execute(query, params + [effective_user_id, effective_user_id])
             rows = cursor.fetchall()
 
             # If user has 0 sessions, automatically create a default "All files" session
@@ -626,6 +772,7 @@ class ChatHistoryService:
                     "file_id": r["file_id"],
                     "file_name": r["file_name"] or ("All files" if r["scope"] == "all" else "Document"),
                     "is_file_deleted": is_deleted,
+                    "is_deleted": is_deleted,
                     "created_at": r["created_at"],
                     "updated_at": r["updated_at"],
                     "user_id": r["user_id"],
@@ -647,6 +794,56 @@ class ChatHistoryService:
             cursor.execute("""
                 UPDATE chat_sessions SET title = ? WHERE id = ?
             """, (clean_title, chat_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def update_session(
+        self,
+        chat_id: str,
+        title: Optional[str] = None,
+        scope: Optional[str] = None,
+        file_id: Optional[str] = None,
+        file_name: Optional[str] = None,
+        user_id: Optional[str] = None
+    ) -> bool:
+        """Updates a chat session's title, scope, and file details if owned by user_id."""
+        if not chat_id:
+            return False
+        if user_id:
+            sess = self.get_session(chat_id, user_id=user_id)
+            if not sess:
+                return False
+
+        fields = []
+        params = []
+        if title is not None:
+            fields.append("title = ?")
+            params.append(title.strip())
+        if scope is not None:
+            fields.append("scope = ?")
+            params.append(scope.strip())
+            if scope.strip() == "all":
+                fields.append("file_id = NULL")
+                fields.append("file_name = NULL")
+        if scope != "all":
+            if file_id is not None:
+                fields.append("file_id = ?")
+                params.append(file_id.strip() if file_id else None)
+            if file_name is not None:
+                fields.append("file_name = ?")
+                params.append(file_name.strip() if file_name else None)
+
+        if not fields:
+            return False
+
+        fields.append("updated_at = ?")
+        params.append(datetime.utcnow().isoformat())
+
+        params.append(chat_id)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            query = f"UPDATE chat_sessions SET {', '.join(fields)} WHERE id = ?"
+            cursor.execute(query, params)
             conn.commit()
             return cursor.rowcount > 0
 
@@ -746,6 +943,10 @@ class ChatHistoryService:
                     new_title = clean_q
                 if new_title:
                     self.update_session_title(clean_chat_id, new_title, user_id=user_id)
+
+        if role == "assistant" and is_no_info_answer(content):
+            sources = []
+            source_details = []
 
         sources_json = json.dumps(sources or [])
         seq_questions_json = json.dumps(suggested_questions or []) if suggested_questions else "[]"
@@ -847,6 +1048,10 @@ class ChatHistoryService:
                     sd_copy["is_deleted"] = bool(fid in deleted_ids)
                     enriched_details.append(sd_copy)
 
+                is_no_info = (r["role"] == "assistant" and is_no_info_answer(r["content"]))
+                final_sources = [] if is_no_info else sources
+                final_details = [] if is_no_info else enriched_details
+
                 messages.append({
                     "id": r["id"],
                     "chat_id": r["chat_id"],
@@ -855,8 +1060,8 @@ class ChatHistoryService:
                     "role": r["role"],
                     "content": r["content"],
                     "text": r["content"],
-                    "sources": sources,
-                    "source_details": enriched_details,
+                    "sources": final_sources,
+                    "source_details": final_details,
                     "suggested_questions": seq_q,
                     "timestamp": r["timestamp"],
                     "time": r["timestamp"],
@@ -865,6 +1070,69 @@ class ChatHistoryService:
                     "user_id": r["user_id"]
                 })
             return messages
+
+    def delete_message_turn(
+        self,
+        chat_id: str,
+        message_id: int,
+        user_id: Optional[str] = None,
+        truncate: bool = False
+    ) -> bool:
+        """
+        Deletes a user question and its related Q&A response from a chat session.
+        If truncate=True, deletes all messages from this message_id onwards in this chat.
+        If truncate=False, deletes just this message and its immediate assistant answer (if any).
+        Strictly verifies user ownership.
+        """
+        clean_chat_id = (chat_id or "").strip()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, role, chat_id, doc_id, user_id FROM messages WHERE id = ?", (message_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            if user_id and row["user_id"] and str(row["user_id"]) != str(user_id):
+                return False
+
+            target_chat_id = clean_chat_id or row["chat_id"] or row["doc_id"]
+
+            if truncate:
+                if user_id:
+                    cursor.execute("""
+                        DELETE FROM messages 
+                        WHERE (chat_id = ? OR doc_id = ?) 
+                          AND id >= ? 
+                          AND (user_id = ? OR user_id IS NULL)
+                    """, (target_chat_id, target_chat_id, message_id, user_id))
+                else:
+                    cursor.execute("""
+                        DELETE FROM messages 
+                        WHERE (chat_id = ? OR doc_id = ?) 
+                          AND id >= ?
+                    """, (target_chat_id, target_chat_id, message_id))
+            else:
+                ids_to_delete = [message_id]
+                if row["role"] == "user":
+                    cursor.execute("""
+                        SELECT id FROM messages 
+                        WHERE (chat_id = ? OR doc_id = ?) 
+                          AND id > ? 
+                          AND role = 'assistant'
+                        ORDER BY id ASC LIMIT 1
+                    """, (target_chat_id, target_chat_id, message_id))
+                    next_row = cursor.fetchone()
+                    if next_row:
+                        ids_to_delete.append(next_row["id"])
+
+                placeholders = ",".join("?" for _ in ids_to_delete)
+                cursor.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", ids_to_delete)
+
+            now_iso = datetime.utcnow().isoformat()
+            cursor.execute("UPDATE chat_sessions SET updated_at = ? WHERE id = ?", (now_iso, target_chat_id))
+
+            conn.commit()
+            return True
 
     def get_safe_history_for_llm(
         self,

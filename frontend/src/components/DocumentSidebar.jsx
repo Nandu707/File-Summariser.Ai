@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MessageSquare,
   Plus,
@@ -12,7 +13,8 @@ import {
   ChevronDown,
   X,
   Clock,
-  Sparkles
+  Sparkles,
+  PanelLeftClose
 } from 'lucide-react';
 
 /**
@@ -58,14 +60,26 @@ export default function DocumentSidebar({
   onOpenUpload,
   searchQuery = '',
   onSearchChange,
-  loading = false
+  loading = false,
+  onToggleCollapse
 }) {
   const [showNewChatMenu, setShowNewChatMenu] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
+  const [sessionToDelete, setSessionToDelete] = useState(null);
   const menuRef = useRef(null);
   const newChatRef = useRef(null);
+
+  // Close delete modal on Escape key
+  useEffect(() => {
+    if (!sessionToDelete) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setSessionToDelete(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sessionToDelete]);
 
   // Close menus on outside click
   useEffect(() => {
@@ -81,10 +95,10 @@ export default function DocumentSidebar({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  // Filter sessions: strictly show only sessions that have actual chat history
+  // Filter sessions: only show sessions that have started (have messages)
   const filteredSessions = useMemo(() => {
     const historyOnly = sessions.filter(
-      (s) => s.message_count > 0 || (s.id && s.id.startsWith('chat_'))
+      (s) => (s.message_count || 0) > 0
     );
     if (!searchQuery.trim()) return historyOnly;
     const q = searchQuery.toLowerCase().trim();
@@ -142,16 +156,25 @@ export default function DocumentSidebar({
   const handleDeleteClick = (e, session) => {
     e.stopPropagation();
     setMenuOpenId(null);
-    const confirmed = window.confirm(
-      `Are you sure you want to permanently delete the chat history for "${session.title}"? This cannot be undone.`
-    );
-    if (confirmed && onDeleteSession) {
-      onDeleteSession(session.id);
+    setSessionToDelete(session);
+  };
+
+  const handleConfirmDelete = () => {
+    if (sessionToDelete && onDeleteSession) {
+      onDeleteSession(sessionToDelete.id);
     }
+    setSessionToDelete(null);
   };
 
   const handleCreateScope = (scope, doc = null) => {
     setShowNewChatMenu(false);
+    // If active session is already empty and matches this scope, just stay in it
+    const active = sessions.find((s) => s.id === activeSessionId);
+    if (active && (!active.message_count || active.message_count === 0) && active.scope === scope) {
+      if (scope === 'all' || (doc && active.file_id === doc.doc_id)) {
+        return;
+      }
+    }
     if (onCreateSession) {
       if (scope === 'all') {
         onCreateSession({ scope: 'all', title: 'New chat' });
@@ -167,22 +190,34 @@ export default function DocumentSidebar({
   };
 
   return (
-    <aside className="w-full lg:w-72 xl:w-80 flex flex-col bg-white rounded-2xl border border-slate-200/90 shadow-sm p-3.5 sm:p-4 h-auto lg:h-full overflow-hidden flex-shrink-0 select-none">
+    <aside className="w-full h-full flex flex-col bg-white rounded-2xl border border-slate-200/90 shadow-sm p-3.5 sm:p-4 overflow-hidden flex-shrink-0 select-none">
       {/* Sidebar Header & New Chat Button */}
       <div className="pb-3 border-b border-slate-200/80 space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-200/80">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-200/80 flex-shrink-0">
               <MessageSquare className="w-3.5 h-3.5" />
             </div>
-            <div>
-              <h2 className="text-xs font-bold text-slate-900 tracking-tight">Chats</h2>
-              <p className="text-[10px] text-slate-500">Conversation history</p>
+            <div className="min-w-0">
+              <h2 className="text-xs font-bold text-slate-900 tracking-tight truncate">Chats</h2>
+              <p className="text-[10px] text-slate-500 truncate">Conversation history</p>
             </div>
           </div>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-            {sessions.length} {sessions.length === 1 ? 'chat' : 'chats'}
-          </span>
+          <div className="flex items-center space-x-1.5 flex-shrink-0">
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+              {filteredSessions.length} {filteredSessions.length === 1 ? 'chat' : 'chats'}
+            </span>
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Collapse history sidebar"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 'New chat' button with Scope Selector */}
@@ -359,16 +394,6 @@ export default function DocumentSidebar({
                             <span className={`w-1.5 h-1.5 rounded-full mr-1 ${isDeleted ? 'bg-rose-500' : 'bg-indigo-600 animate-pulse'}`} />
                           )}
 
-                          {/* Direct Delete Button (Hover) */}
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteClick(e, session)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-all cursor-pointer"
-                            title="Delete chat"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-
                           {/* Chat Menu Trigger */}
                           <div className="relative" ref={menuOpenId === session.id ? menuRef : null}>
                             <button
@@ -377,7 +402,9 @@ export default function DocumentSidebar({
                                 e.stopPropagation();
                                 setMenuOpenId(menuOpenId === session.id ? null : session.id);
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-opacity cursor-pointer"
+                              className={`p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition-opacity cursor-pointer ${
+                                menuOpenId === session.id ? 'opacity-100 bg-slate-100 text-slate-700' : 'opacity-0 group-hover:opacity-100'
+                              }`}
                               title="Chat options"
                             >
                               <MoreVertical className="w-3.5 h-3.5" />
@@ -432,6 +459,86 @@ export default function DocumentSidebar({
           <span>Chats older than 30 days are deleted automatically</span>
         </div>
       </div>
+
+      {/* Delete Chat Confirmation Modal Dialog */}
+      {sessionToDelete && typeof document !== 'undefined' && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-session-dialog-title"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSessionToDelete(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl border border-slate-200/90 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setSessionToDelete(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              aria-label="Close dialog"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-center flex-shrink-0 text-rose-600 shadow-2xs">
+                <Trash2 className="w-6 h-6 text-rose-600" />
+              </div>
+
+              <div className="flex-1 min-w-0 pt-0.5">
+                <h3 id="delete-session-dialog-title" className="text-base font-bold text-slate-900 tracking-tight">
+                  Are you sure want to delete the file
+                </h3>
+                <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
+                  This conversation history will be permanently deleted and cannot be undone.
+                </p>
+
+                {sessionToDelete && (
+                  <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center space-x-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-slate-800 truncate" title={sessionToDelete.title}>
+                        {sessionToDelete.title}
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {sessionToDelete.message_count || 0} messages • {sessionToDelete.scope === 'all' ? 'All files' : sessionToDelete.file_name || 'Document'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSessionToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 transition-all cursor-pointer active:scale-95"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 shadow-xs shadow-rose-600/25 active:scale-95 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Yes, Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </aside>
   );
 }

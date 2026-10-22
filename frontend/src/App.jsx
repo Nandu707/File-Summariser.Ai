@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import Navbar from './components/Navbar';
-import { ChatPage, DocumentsPage } from './pages';
+import { ChatPage, DocumentsPage, UsersPage } from './pages';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -10,8 +10,9 @@ import { API_BASE_URL } from './api';
 function MainApp() {
   const { user, loading, isAuthenticated } = useAuth();
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
-  const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'documents'
+  const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'documents' | 'users'
   const [documents, setDocuments] = useState([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [activeDocId, setActiveDocId] = useState(() => {
     try {
       return localStorage.getItem('task_rag_active_doc_id') || 'all';
@@ -30,7 +31,7 @@ function MainApp() {
     }
   }, [isAuthenticated]);
 
-  // Fetch documents from backend API for current authenticated user
+  // Fetch documents and user stats from backend API
   const fetchDocuments = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
@@ -43,12 +44,25 @@ function MainApp() {
       if (Array.isArray(docsRes.data)) {
         setDocuments(docsRes.data);
       }
+
+      // If current user is admin, fetch pending user count
+      if (user?.role === 'admin') {
+        try {
+          const usersRes = await axios.get(`${API_BASE_URL}/api/auth/admin/users`);
+          if (Array.isArray(usersRes.data)) {
+            const pending = usersRes.data.filter((u) => u.status === 'pending').length;
+            setPendingCount(pending);
+          }
+        } catch (e) {
+          console.debug('Failed to fetch admin users count:', e);
+        }
+      }
     } catch (err) {
       if (err.response?.status !== 401) {
         setBackendStatus('error');
       }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.role]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -107,6 +121,7 @@ function MainApp() {
         onSelectTab={setActiveTab}
         backendStatus={backendStatus}
         docCount={documents.length}
+        pendingCount={pendingCount}
       />
 
       {/* Main Content Area */}
@@ -129,6 +144,13 @@ function MainApp() {
             onSelectDoc={handleSelectDoc}
             onNavigateTab={setActiveTab}
             onDocumentCountChange={handleDocumentCountChange}
+          />
+        )}
+
+        {activeTab === 'users' && user?.role === 'admin' && (
+          <UsersPage
+            key="users-admin"
+            onPendingCountChange={setPendingCount}
           />
         )}
       </main>

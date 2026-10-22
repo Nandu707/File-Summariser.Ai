@@ -1,16 +1,62 @@
-import { Database, MessageSquare, Layers, LogOut, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Database, MessageSquare, Layers, LogOut, User, Loader2, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import ConfirmModal from './ConfirmModal';
 
-export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus, docCount = 0 }) {
+export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus, docCount = 0, pendingCount = 0 }) {
   const { user, logout } = useAuth();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const isAdmin = user?.role === 'admin';
+
   const navItems = [
     { id: 'chat', label: 'Chat & Q&A', icon: MessageSquare },
-    { id: 'documents', label: 'Documents & Upload', icon: Layers, badge: docCount },
+    {
+      id: 'documents',
+      label: isAdmin ? 'Files' : 'Shared Documents',
+      icon: Layers,
+      badge: docCount,
+    },
+    ...(isAdmin
+      ? [
+          {
+            id: 'users',
+            label: 'Users',
+            icon: Shield,
+            badge: pendingCount,
+            isPendingBadge: true,
+          },
+        ]
+      : []),
   ];
+
+  useEffect(() => {
+    if (!showLogoutConfirm) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !isLoggingOut) {
+        setShowLogoutConfirm(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showLogoutConfirm, isLoggingOut]);
+
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      setShowLogoutConfirm(false);
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/85 backdrop-blur-md shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
           <div className="flex items-center space-x-6">
@@ -52,7 +98,11 @@ export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus,
                       <span>{item.label}</span>
                       {item.badge !== undefined && item.badge > 0 && (
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                          isActive ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'
+                          item.isPendingBadge
+                            ? 'bg-amber-500 text-white animate-pulse'
+                            : isActive
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
                         }`}>
                           {item.badge}
                         </span>
@@ -98,9 +148,9 @@ export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus,
                 </div>
 
                 <button
-                  onClick={logout}
+                  onClick={() => setShowLogoutConfirm(true)}
                   title="Log out of session"
-                  className="flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-all cursor-pointer"
+                  className="flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 transition-all cursor-pointer active:scale-95"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Logout</span>
@@ -127,7 +177,11 @@ export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus,
                   <Icon className="w-3.5 h-3.5" />
                   <span>{item.label}</span>
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="text-[10px] px-1.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                    <span className={`text-[10px] px-1.5 rounded-full font-bold ${
+                      item.isPendingBadge
+                        ? 'bg-amber-500 text-white animate-pulse'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}>
                       {item.badge}
                     </span>
                   )}
@@ -137,6 +191,23 @@ export default function Navbar({ activeTab = 'chat', onSelectTab, backendStatus,
           </div>
         )}
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={handleConfirmLogout}
+        title="Are you sure want to logout"
+        description="You will need to sign in again to access your account."
+        icon={LogOut}
+        iconVariant="rose"
+        confirmText="Yes, Log out"
+        confirmVariant="rose"
+        confirmIcon={LogOut}
+        isLoading={isLoggingOut}
+        loadingText="Signing out..."
+        user={user}
+      />
     </header>
   );
 }
