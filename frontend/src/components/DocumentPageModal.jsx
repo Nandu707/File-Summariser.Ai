@@ -101,29 +101,29 @@ export default function DocumentPageModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/40 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-5xl h-[90vh] bg-white border border-slate-200/90 rounded-2xl shadow-xl flex flex-col overflow-hidden text-slate-800"
+        className="w-full max-w-5xl h-[90vh] bg-white dark:bg-[#1a1a1a] border border-slate-200/90 dark:border-neutral-800 rounded-2xl shadow-xl flex flex-col overflow-hidden text-slate-800 dark:text-neutral-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Header Bar */}
-        <div className="flex-shrink-0 px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/90 flex items-center justify-between">
+        <div className="flex-shrink-0 px-5 py-3.5 bg-slate-50/80 dark:bg-[#141414] border-b border-slate-200/90 dark:border-neutral-800 flex items-center justify-between">
           <div className="flex items-center space-x-3 min-w-0 mr-3">
-            <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-200/80 text-indigo-600 flex-shrink-0">
+            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
               <BookOpen className="w-4 h-4" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center space-x-2">
-                <h3 className="text-sm font-bold text-slate-900 truncate max-w-[160px] sm:max-w-[240px] md:max-w-sm">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate max-w-[160px] sm:max-w-[240px] md:max-w-sm">
                   {pageData?.filename || filename}
                 </h3>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 flex-shrink-0">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60 flex-shrink-0">
                   {pageData?.file_type || (isPdf ? 'pdf' : 'doc')}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 dark:text-neutral-400">
                 Viewing cited source page from ChromaDB vector index
               </p>
             </div>
@@ -131,21 +131,21 @@ export default function DocumentPageModal({
 
           {/* Navigation Controls */}
           <div className="flex items-center space-x-2">
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl px-1.5 py-1 shadow-2xs">
+            <div className="flex items-center bg-white dark:bg-[#212121] border border-slate-200 dark:border-neutral-700 rounded-xl px-1.5 py-1 shadow-2xs">
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage <= 1 || loading}
                 title="Previous page (Left arrow)"
-                className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="p-1 rounded-lg text-slate-500 dark:text-neutral-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <div className="px-3 text-xs font-semibold text-slate-700">
+              <div className="px-3 text-xs font-semibold text-slate-700 dark:text-neutral-200">
                 <span>Page </span>
-                <span className="text-indigo-600 font-bold">{currentPage}</span>
-                <span className="text-slate-400"> / {totalPages}</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-bold">{currentPage}</span>
+                <span className="text-slate-400 dark:text-neutral-500"> / {totalPages}</span>
               </div>
 
               <button
@@ -153,7 +153,7 @@ export default function DocumentPageModal({
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages || loading}
                 title="Next page (Right arrow)"
-                className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="p-1 rounded-lg text-slate-500 dark:text-neutral-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -161,14 +161,14 @@ export default function DocumentPageModal({
 
             {/* View Mode Tabs (for PDF) */}
             {isPdf && (
-              <div className="hidden sm:flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5 text-xs">
+              <div className="hidden sm:flex items-center bg-slate-100 dark:bg-[#212121] border border-slate-200 dark:border-neutral-700 rounded-xl p-0.5 text-xs">
                 <button
                   type="button"
                   onClick={() => setActiveTab('preview')}
                   className={`px-3 py-1 rounded-lg font-medium transition-all ${
                     activeTab === 'preview'
-                      ? 'bg-white text-indigo-700 shadow-2xs font-semibold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#141414] text-indigo-700 dark:text-indigo-300 shadow-2xs font-semibold'
+                      : 'text-slate-600 dark:text-neutral-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Document Viewer
@@ -178,8 +178,8 @@ export default function DocumentPageModal({
                   onClick={() => setActiveTab('text')}
                   className={`px-3 py-1 rounded-lg font-medium transition-all ${
                     activeTab === 'text'
-                      ? 'bg-white text-indigo-700 shadow-2xs font-semibold'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white dark:bg-[#141414] text-indigo-700 dark:text-indigo-300 shadow-2xs font-semibold'
+                      : 'text-slate-600 dark:text-neutral-400 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Extracted Text
@@ -193,9 +193,9 @@ export default function DocumentPageModal({
                 type="button"
                 onClick={handleOpenExternal}
                 title="Open full file at this page in browser tab"
-                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-indigo-700 transition-colors shadow-2xs"
+                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-white dark:bg-[#212121] hover:bg-slate-50 dark:hover:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-xs font-semibold text-slate-700 dark:text-neutral-200 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors shadow-2xs cursor-pointer"
               >
-                <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
+                <ExternalLink className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span className="hidden md:inline">Open in Tab</span>
               </button>
             )}
@@ -205,7 +205,7 @@ export default function DocumentPageModal({
               type="button"
               onClick={onClose}
               title="Close viewer (Esc)"
-              className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              className="p-1.5 rounded-xl text-slate-400 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -213,11 +213,11 @@ export default function DocumentPageModal({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 min-h-0 bg-slate-50/50 p-4 overflow-hidden relative">
+        <div className="flex-1 min-h-0 bg-slate-50/50 dark:bg-[#121212] p-4 overflow-hidden relative">
           {loading && (
-            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-3">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-              <p className="text-xs font-semibold text-slate-600">
+            <div className="absolute inset-0 bg-white/70 dark:bg-black/70 backdrop-blur-sm z-10 flex flex-col items-center justify-center space-y-3">
+              <Loader2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin" />
+              <p className="text-xs font-semibold text-slate-600 dark:text-neutral-300">
                 Loading Page {currentPage}...
               </p>
             </div>
@@ -225,15 +225,15 @@ export default function DocumentPageModal({
 
           {error && (
             <div className="h-full flex flex-col items-center justify-center p-6 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-500 flex items-center justify-center mb-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-rose-500 dark:text-rose-400 flex items-center justify-center mb-3">
                 <FileText className="w-6 h-6" />
               </div>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">Unable to load page</h4>
-              <p className="text-xs text-slate-500 max-w-md mb-4">{error}</p>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1">Unable to load page</h4>
+              <p className="text-xs text-slate-500 dark:text-neutral-400 max-w-md mb-4">{error}</p>
               <button
                 type="button"
                 onClick={() => fetchPage(currentPage)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer"
               >
                 Retry
               </button>
@@ -241,7 +241,7 @@ export default function DocumentPageModal({
           )}
 
           {!error && isPdf && activeTab === 'preview' ? (
-            <div className="w-full h-full rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs">
+            <div className="w-full h-full rounded-xl overflow-hidden border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#1e1e1e] shadow-2xs">
               <iframe
                 title={`Page ${currentPage} of ${filename}`}
                 src={`${API_BASE_URL}/api/documents/${docId}/file#page=${currentPage}&toolbar=1&navpanes=0`}
@@ -249,16 +249,16 @@ export default function DocumentPageModal({
               />
             </div>
           ) : !error ? (
-            <div className="w-full h-full flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+            <div className="w-full h-full flex flex-col bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-2xs">
               {/* Text Viewer Toolbar */}
-              <div className="flex-shrink-0 px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
-                <div className="flex items-center space-x-2 text-slate-600">
-                  <FileCode className="w-3.5 h-3.5 text-indigo-600" />
+              <div className="flex-shrink-0 px-4 py-2.5 bg-slate-50 dark:bg-[#141414] border-b border-slate-200 dark:border-neutral-800 flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-2 text-slate-600 dark:text-neutral-300">
+                  <FileCode className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>
                     Indexed Text for <strong>Page {currentPage}</strong>
                   </span>
                   {pageData?.content && (
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[11px] text-slate-400 dark:text-neutral-500">
                       • {pageData.content.split(/\s+/).filter(Boolean).length} words
                     </span>
                   )}
@@ -267,16 +267,16 @@ export default function DocumentPageModal({
                 <button
                   type="button"
                   onClick={handleCopyText}
-                  className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-colors text-xs font-medium shadow-2xs"
+                  className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-[#212121] hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-neutral-200 border border-slate-200 dark:border-neutral-700 transition-colors text-xs font-medium shadow-2xs cursor-pointer"
                 >
                   {copied ? (
                     <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-600 font-semibold">Copied</span>
+                      <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                      <Copy className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400" />
                       <span>Copy Page Text</span>
                     </>
                   )}
@@ -284,11 +284,11 @@ export default function DocumentPageModal({
               </div>
 
               {/* Text View Body */}
-              <div className="flex-1 p-5 overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed text-slate-700 select-text whitespace-pre-wrap">
+              <div className="flex-1 p-5 overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed text-slate-700 dark:text-neutral-200 select-text whitespace-pre-wrap">
                 {pageData?.content ? (
                   pageData.content
                 ) : (
-                  <div className="h-full flex items-center justify-center text-slate-400 italic">
+                  <div className="h-full flex items-center justify-center text-slate-400 dark:text-neutral-500 italic">
                     No text extracted for this page.
                   </div>
                 )}
@@ -298,7 +298,7 @@ export default function DocumentPageModal({
         </div>
 
         {/* Bottom Status Footer */}
-        <div className="flex-shrink-0 px-5 py-2.5 bg-slate-50/80 border-t border-slate-200/90 flex items-center justify-between text-[11px] text-slate-500">
+        <div className="flex-shrink-0 px-5 py-2.5 bg-slate-50/80 dark:bg-[#141414] border-t border-slate-200/90 dark:border-neutral-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-neutral-400">
           <div className="flex items-center space-x-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span>ChromaDB Vector Verified Citation</span>

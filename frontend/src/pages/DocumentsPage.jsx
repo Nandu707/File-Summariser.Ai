@@ -371,13 +371,13 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
       )}
 
       {/* Top Header & Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-neutral-800">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center space-x-2">
-            <Layers className="w-5 h-5 text-indigo-600" />
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center space-x-2">
+            <Layers className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <span>{isAdmin ? 'File Upload & Management' : 'Shared Knowledge Base'}</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-1">
             {isAdmin
               ? 'Upload, replace, and delete shared documents for all users.'
               : 'Explore and ask questions about documents uploaded by the administrator.'}
@@ -388,10 +388,10 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
           <button
             onClick={() => fetchDocuments()}
             disabled={loading}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 shadow-2xs transition-all active:scale-95"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-neutral-700 hover:border-slate-300 dark:hover:border-neutral-600 shadow-2xs transition-all active:scale-95 cursor-pointer"
             title="Refresh document list"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600 dark:text-indigo-400' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
@@ -399,15 +399,15 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
 
       {/* Integrated Upload Box / Multi-File Queue (Admin Only) */}
       {isAdmin && (
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200/90 dark:border-neutral-800 p-5 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
                 <UploadCloud className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Upload Files</h2>
-                <p className="text-[11px] text-slate-500">Supports PDF, DOCX, DOC, and TXT (up to 25MB each)</p>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Upload Files</h2>
+                <p className="text-[11px] text-slate-500 dark:text-neutral-400">Supports PDF, DOCX, DOC, and TXT (up to 25MB each)</p>
               </div>
             </div>
 
@@ -416,12 +416,12 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                 {uploadTasks.some((t) => t.status === 'success' || t.status === 'error') && (
                   <button
                     onClick={clearFinishedTasks}
-                    className="text-[11px] font-semibold text-slate-500 hover:text-indigo-600 px-2.5 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+                    className="text-[11px] font-semibold text-slate-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 px-2.5 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                   >
                     Clear Finished
                   </button>
                 )}
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
                   {uploadTasks.length} {uploadTasks.length === 1 ? 'file' : 'files'}
                 </span>
               </div>
@@ -448,27 +448,27 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
               onClick={() => fileInputRef.current?.click()}
               className={`relative border-2 border-dashed rounded-2xl p-7 sm:p-9 text-center cursor-pointer transition-all ${
                 dragActive
-                  ? 'border-indigo-600 bg-indigo-50/70 scale-[0.99]'
-                  : 'border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/20'
+                  ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 scale-[0.99]'
+                  : 'border-slate-300 dark:border-neutral-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20'
               }`}
             >
               <div className="flex flex-col items-center justify-center space-y-3">
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
-                  dragActive ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'
+                  dragActive ? 'bg-indigo-600 text-white' : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
                 }`}>
                   <UploadCloud className="w-6 h-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-neutral-200">
                     {dragActive ? 'Drop your files here to upload' : 'Click to select or drag & drop documents here'}
                   </p>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 dark:text-neutral-500 mt-1">
                     Select multiple files to upload and index concurrently without waiting
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="mt-1 px-4 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors pointer-events-none"
+                  className="mt-1 px-4 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60 hover:bg-indigo-100 transition-colors pointer-events-none"
                 >
                   Browse Files
                 </button>
@@ -478,20 +478,20 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
             /* Side-by-Side: Left Side Progress Bars, Right Side Add More Files Dropzone */
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
               {/* Left Side: Uploading Progress Bar List */}
-              <div className="lg:col-span-6 bg-slate-50/70 rounded-2xl border border-slate-200/90 p-4 flex flex-col justify-between">
+              <div className="lg:col-span-6 bg-slate-50/70 dark:bg-[#141414] rounded-2xl border border-slate-200/90 dark:border-neutral-800 p-4 flex flex-col justify-between">
                 <div>
-                  <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200/80">
+                  <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-200/80 dark:border-neutral-800">
                     <div className="flex items-center space-x-2">
                       {!uploadTasks.some((t) => t.status === 'uploading' || t.status === 'indexing') && (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       )}
-                      <span className="text-xs font-bold text-slate-800">
+                      <span className="text-xs font-bold text-slate-800 dark:text-neutral-200">
                         {uploadTasks.some((t) => t.status === 'uploading' || t.status === 'indexing')
                           ? `Uploading & Indexing (${uploadTasks.filter((t) => t.status === 'uploading' || t.status === 'indexing').length} active)...`
                           : 'Uploads Completed'}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-medium">
+                    <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-medium">
                       Live Queue
                     </span>
                   </div>
@@ -504,52 +504,52 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                       return (
                         <div
                           key={task.id}
-                          className="bg-white rounded-xl border border-slate-200/80 p-3 shadow-2xs space-y-2 hover:border-slate-300 transition-colors"
+                          className="bg-white dark:bg-[#1a1a1a] rounded-xl border border-slate-200/80 dark:border-neutral-800 p-3 shadow-2xs space-y-2 hover:border-slate-300 dark:hover:border-neutral-700 transition-colors"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center space-x-2 min-w-0">
                               <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
                                 ext === 'PDF'
-                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60'
                                   : ext === 'DOCX' || ext === 'DOC'
-                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60'
+                                  : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
                               }`}>
                                 {ext}
                               </span>
-                              <span className="text-xs font-semibold text-slate-800 truncate" title={task.filename}>
+                              <span className="text-xs font-semibold text-slate-800 dark:text-neutral-200 truncate" title={task.filename}>
                                 {task.filename}
                               </span>
-                              <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">
+                              <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-mono whitespace-nowrap">
                                 ({task.sizeFormatted})
                               </span>
                             </div>
 
                             <div className="flex items-center space-x-1.5 flex-shrink-0">
                               {task.status === 'uploading' && (
-                                <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60 px-2 py-0.5 rounded-full">
                                   {task.progress}%
                                 </span>
                               )}
                               {task.status === 'indexing' && (
-                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full animate-pulse">
+                                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 px-2 py-0.5 rounded-full animate-pulse">
                                   Indexing
                                 </span>
                               )}
                               {task.status === 'success' && (
-                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-full">
                                   Done
                                 </span>
                               )}
                               {task.status === 'error' && (
-                                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                                <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 px-2 py-0.5 rounded-full">
                                   Failed
                                 </span>
                               )}
 
                               <button
                                 onClick={() => removeUploadTask(task.id)}
-                                className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                                className="p-1 rounded text-slate-400 dark:text-neutral-500 hover:text-slate-600 dark:hover:text-neutral-300 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                                 title="Dismiss"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -558,7 +558,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                           </div>
 
                           {/* Progress Bar Container */}
-                          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className="w-full bg-slate-100 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
                             <div
                               className={`h-2 rounded-full transition-all duration-300 ${
                                 task.status === 'uploading'
@@ -578,19 +578,19 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                             <div className="flex items-center space-x-1.5 truncate">
                               {isWorking ? (
                                 <Loader2 className={`w-3.5 h-3.5 animate-spin flex-shrink-0 ${
-                                  task.status === 'indexing' ? 'text-amber-600' : 'text-indigo-600'
+                                  task.status === 'indexing' ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'
                                 }`} />
                               ) : task.status === 'success' ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                               ) : (
-                                <AlertCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+                                <AlertCircle className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 flex-shrink-0" />
                               )}
                               <span className={`truncate ${
                                 task.status === 'error'
-                                  ? 'text-rose-700 font-medium'
+                                  ? 'text-rose-700 dark:text-rose-400 font-medium'
                                   : task.status === 'success'
-                                  ? 'text-emerald-800 font-medium'
-                                  : 'text-slate-600'
+                                  ? 'text-emerald-800 dark:text-emerald-400 font-medium'
+                                  : 'text-slate-600 dark:text-neutral-300'
                               }`}>
                                 {task.statusText}
                               </span>
@@ -599,7 +599,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                             {task.status === 'success' && task.docData && (
                               <button
                                 onClick={() => handleOpenChat(task.docData)}
-                                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors whitespace-nowrap ml-2"
+                                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-colors whitespace-nowrap ml-2 cursor-pointer"
                               >
                                 <span>Chat</span>
                                 <ArrowRight className="w-3 h-3" />
@@ -612,7 +612,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                   </div>
                 </div>
 
-                <div className="pt-2 mt-2 border-t border-slate-200/60 text-[10px] text-slate-400 flex items-center justify-between">
+                <div className="pt-2 mt-2 border-t border-slate-200/60 dark:border-neutral-800 text-[10px] text-slate-400 dark:text-neutral-500 flex items-center justify-between">
                   <span>Files process concurrently in the background</span>
                   <span>Max 25MB each</span>
                 </div>
@@ -627,27 +627,27 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                 onClick={() => fileInputRef.current?.click()}
                 className={`lg:col-span-6 relative border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all flex flex-col items-center justify-center min-h-[220px] ${
                   dragActive
-                    ? 'border-indigo-600 bg-indigo-50/70 scale-[0.99]'
-                    : 'border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/20 bg-slate-50/30'
+                    ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 scale-[0.99]'
+                    : 'border-slate-300 dark:border-neutral-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/20 bg-slate-50/30 dark:bg-[#141414]'
                 }`}
               >
                 <div className="flex flex-col items-center justify-center space-y-3">
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
-                    dragActive ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'
+                    dragActive ? 'bg-indigo-600 text-white' : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
                   }`}>
                     <UploadCloud className="w-6 h-6" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-neutral-200">
                       {dragActive ? 'Drop more files here' : 'Select or drop more files'}
                     </p>
-                    <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                    <p className="text-xs text-slate-400 dark:text-neutral-500 mt-1 max-w-xs mx-auto">
                       You can add additional documents while other files are still uploading and indexing
                     </p>
                   </div>
                   <button
                     type="button"
-                    className="mt-1 px-4 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors pointer-events-none"
+                    className="mt-1 px-4 py-1.5 rounded-xl text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/60 hover:bg-indigo-100 transition-colors pointer-events-none"
                   >
                     Browse More Files
                   </button>
@@ -660,14 +660,14 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
 
       {/* Non-Admin Notice Banner */}
       {!isAdmin && (
-        <div className="bg-indigo-50/60 border border-indigo-100/90 rounded-2xl p-4 sm:p-5 flex items-start space-x-3 text-xs text-indigo-950">
+        <div className="bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100/90 dark:border-indigo-900/60 rounded-2xl p-4 sm:p-5 flex items-start space-x-3 text-xs text-indigo-950 dark:text-indigo-200">
           <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-xs">
             <Layers className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-bold text-indigo-900 text-sm">Centralized Document Library</h3>
-            <p className="text-slate-600 mt-1 leading-relaxed">
-              All documents listed below have been provided and indexed by the system administrator. You can view or chat with any individual document, or ask questions across the entire knowledge base in <span className="font-semibold text-indigo-700">All files</span> chat mode.
+            <h3 className="font-bold text-indigo-900 dark:text-indigo-300 text-sm">Centralized Document Library</h3>
+            <p className="text-slate-600 dark:text-neutral-300 mt-1 leading-relaxed">
+              All documents listed below have been provided and indexed by the system administrator. You can view or chat with any individual document, or ask questions across the entire knowledge base in <span className="font-semibold text-indigo-700 dark:text-indigo-400">All files</span> chat mode.
             </p>
           </div>
         </div>
@@ -675,23 +675,23 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-sm flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200/90 dark:border-neutral-800 p-4 shadow-sm flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-slate-500">Total Indexed Files</p>
-            <p className="text-lg font-bold text-slate-900">{documents.length}</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-neutral-400">Total Indexed Files</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-white">{documents.length}</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-sm flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200/90 dark:border-neutral-800 p-4 shadow-sm flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-800/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
             <Layers className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[11px] font-medium text-slate-500">Vector Chunks in ChromaDB</p>
-            <p className="text-lg font-bold text-slate-900">{totalChunks.toLocaleString()}</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-neutral-400">Vector Chunks in ChromaDB</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-white">{totalChunks.toLocaleString()}</p>
           </div>
         </div>
       </div>
@@ -699,41 +699,41 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
       {/* Search and Manage Header */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h2 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+          <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
             <span>Manage Uploaded Files</span>
-            <span className="text-xs font-normal text-slate-500">({filteredDocs.length} of {documents.length})</span>
+            <span className="text-xs font-normal text-slate-500 dark:text-neutral-400">({filteredDocs.length} of {documents.length})</span>
           </h2>
 
           <div className="relative w-full sm:w-80">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 dark:text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search files by name..."
-              className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 shadow-2xs transition-all"
+              className="w-full bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-neutral-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-neutral-100 placeholder:text-slate-400 dark:placeholder:text-neutral-500 shadow-2xs transition-all"
             />
           </div>
         </div>
 
         {/* Documents Grid */}
         {loading ? (
-          <div className="py-16 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200/90">
-            <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mx-auto mb-2" />
+          <div className="py-16 text-center text-xs text-slate-500 dark:text-neutral-400 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200/90 dark:border-neutral-800">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-600 dark:text-indigo-400 mx-auto mb-2" />
             <span>Loading indexed documents...</span>
           </div>
         ) : error ? (
-          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0" />
+          <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-rose-500 dark:text-rose-400 flex-shrink-0" />
             <span>{error}</span>
           </div>
         ) : filteredDocs.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center max-w-md mx-auto shadow-sm">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+          <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-neutral-800 p-12 text-center max-w-md mx-auto shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3">
               <FileText className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold text-slate-900">No documents found</h3>
-            <p className="text-xs text-slate-500 mt-1 mb-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">No documents found</h3>
+            <p className="text-xs text-slate-500 dark:text-neutral-400 mt-1 mb-4">
               {searchQuery
                 ? `No files matching "${searchQuery}"`
                 : isAdmin
@@ -743,7 +743,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200"
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-neutral-300 bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
               >
                 Clear Search
               </button>
@@ -759,32 +759,32 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
               return (
                 <div
                   key={doc.doc_id}
-                  className="bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+                  className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200/90 dark:border-neutral-800 hover:border-indigo-300 dark:hover:border-indigo-500/60 p-4 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
                 >
                   <div>
                     {/* Card Header with Badges */}
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                         ext === 'PDF'
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60'
                           : ext === 'DOCX' || ext === 'DOC'
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60'
+                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
                       }`}>
                         {ext}
                       </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 border border-slate-200/80 dark:border-neutral-700">
                         {doc.chunks} chunks
                       </span>
                     </div>
 
                     {/* Title */}
-                    <h3 className="text-sm font-bold text-slate-900 line-clamp-2 mb-1 group-hover:text-indigo-600 transition-colors" title={doc.filename}>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white line-clamp-2 mb-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" title={doc.filename}>
                       {doc.filename}
                     </h3>
 
                     {doc.pages_count ? (
-                      <div className="flex items-center space-x-3 text-[11px] text-slate-400 mb-4">
+                      <div className="flex items-center space-x-3 text-[11px] text-slate-400 dark:text-neutral-500 mb-4">
                         <span>{doc.pages_count} pages</span>
                       </div>
                     ) : (
@@ -793,12 +793,12 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                   </div>
 
                   {/* Actions Bar */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-1">
+                  <div className="pt-3 border-t border-slate-100 dark:border-neutral-800/80 flex items-center justify-between gap-1">
                     <div className="flex items-center space-x-1">
                       <button
                         onClick={() => handlePreview(doc)}
                         title="Preview Document Pages"
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
@@ -807,7 +807,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                         target="_blank"
                         rel="noreferrer"
                         title="Download / View original file"
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                       >
                         <Download className="w-4 h-4" />
                       </a>
@@ -817,10 +817,10 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                             onClick={() => handleReplaceClick(doc)}
                             disabled={isReplacing}
                             title="Replace document file with updated version"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-400 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
                           >
                             {isReplacing ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                              <Loader2 className="w-4 h-4 animate-spin text-indigo-500 dark:text-indigo-400" />
                             ) : (
                               <RefreshCw className="w-4 h-4" />
                             )}
@@ -829,7 +829,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
                             onClick={() => setFileToDelete(doc)}
                             disabled={isDeleting || isDeletingFile}
                             title="Delete from shared library"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-400 dark:text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                           >
                             {isDeleting ? (
                               <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
@@ -843,7 +843,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
 
                     <button
                       onClick={() => handleOpenChat(doc)}
-                      className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 transition-colors active:scale-95"
+                      className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800/80 transition-colors active:scale-95 cursor-pointer"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                       <span>Chat</span>
@@ -877,7 +877,7 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
           }}
         >
           <div
-            className="w-full max-w-md bg-white rounded-2xl border border-slate-200/90 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
+            className="w-full max-w-md bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200/90 dark:border-neutral-800 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close Button */}
@@ -885,35 +885,35 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
               type="button"
               onClick={() => !isDeletingFile && setFileToDelete(null)}
               disabled={isDeletingFile}
-              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-50"
               aria-label="Close dialog"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="flex items-start space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-center flex-shrink-0 text-rose-600 shadow-2xs">
-                <Trash2 className="w-6 h-6 text-rose-600" />
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200/80 dark:border-rose-900/60 flex items-center justify-center flex-shrink-0 text-rose-600 dark:text-rose-400 shadow-2xs">
+                <Trash2 className="w-6 h-6 text-rose-600 dark:text-rose-400" />
               </div>
 
               <div className="flex-1 min-w-0 pt-0.5">
-                <h3 id="delete-file-dialog-title" className="text-base font-bold text-slate-900 tracking-tight">
-                  Are you sure want to delete the file
+                <h3 id="delete-file-dialog-title" className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                  Are you sure want to delete the file?
                 </h3>
-                <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-neutral-400 leading-relaxed">
                   This file will be permanently removed from the vector database. All associated chunks and chat history will be deleted.
                 </p>
 
                 {fileToDelete && (
-                  <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center space-x-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 flex items-center justify-center font-bold text-[10px] uppercase flex-shrink-0">
+                  <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-neutral-800/80 border border-slate-200/80 dark:border-neutral-700 flex items-center space-x-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60 flex items-center justify-center font-bold text-[10px] uppercase flex-shrink-0">
                       {(fileToDelete.filename || '').split('.').pop()}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-800 truncate" title={fileToDelete.filename}>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-neutral-200 truncate" title={fileToDelete.filename}>
                         {fileToDelete.filename}
                       </p>
-                      <p className="text-[11px] text-slate-500 truncate">
+                      <p className="text-[11px] text-slate-500 dark:text-neutral-400 truncate">
                         {fileToDelete.chunks} chunks{fileToDelete.pages_count ? ` • ${fileToDelete.pages_count} pages` : ''}
                       </p>
                     </div>
@@ -923,12 +923,12 @@ export default function DocumentsPage({ onSelectDoc, onNavigateTab, onDocumentCo
             </div>
 
             {/* Actions */}
-            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100">
+            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100 dark:border-neutral-800">
               <button
                 type="button"
                 onClick={() => setFileToDelete(null)}
                 disabled={isDeletingFile}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200/80 dark:hover:bg-neutral-700 border border-slate-200/60 dark:border-neutral-700 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 Cancel
               </button>

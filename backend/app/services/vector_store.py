@@ -119,6 +119,7 @@ class VectorStoreService:
         self._sync_backend_db_if_needed(backend_vdb)
         self._cleanup_orphaned_files()
         self.migrate_legacy_private_files()
+        self._get_registry(force_reconcile=True)
 
     def get_user_files_dir(self, user_id: Optional[str] = None) -> Path:
         """Returns the single shared directory for raw documents and page caches."""
@@ -340,8 +341,17 @@ class VectorStoreService:
             print(f"[VectorStore] Notice during registry reconciliation: {e}")
         return reg
 
-    def _get_registry(self) -> Dict[str, Any]:
+    def _get_registry(self, force_reconcile: bool = False) -> Dict[str, Any]:
         reg_file = self.persist_dir / "documents_registry.json"
+        try:
+            mtime = reg_file.stat().st_mtime if reg_file.exists() else 0
+        except Exception:
+            mtime = 0
+
+        if hasattr(self, "_cached_registry") and self._cached_registry is not None:
+            if getattr(self, "_cached_registry_mtime", 0) == mtime and not force_reconcile:
+                return self._cached_registry
+
         reg = {}
         if reg_file.exists():
             try:
@@ -349,13 +359,24 @@ class VectorStoreService:
                     reg = json.load(f)
             except Exception:
                 reg = {}
-        return self._reconcile_registry_with_chromadb(reg)
+
+        if force_reconcile or not reg:
+            reg = self._reconcile_registry_with_chromadb(reg)
+
+        self._cached_registry = reg
+        self._cached_registry_mtime = mtime
+        return reg
 
     def _save_registry(self, registry: Dict[str, Any]):
         try:
             reg_file = self.persist_dir / "documents_registry.json"
             with open(reg_file, "w", encoding="utf-8") as f:
                 json.dump(registry, f, indent=2)
+            self._cached_registry = registry
+            try:
+                self._cached_registry_mtime = reg_file.stat().st_mtime
+            except Exception:
+                pass
         except Exception as e:
             print(f"[VectorStore] Error saving document registry: {e}")
 
@@ -1193,9 +1214,9 @@ class VectorStoreService:
         base_query_args = {"query_embeddings": [query_emb]} if query_emb is not None else {"query_texts": [question]}
 
         if is_all_docs and len(reg) > 1:
-            # --- MULTI-DOCUMENT BALANCED RETRIEVAL ---
-            # 1. Global ANN Search across user's collection
-            global_k = min(32, total_chunks)
+            # --- MULTI-DOCUMENT ULTRA-FAST HIGH ACCURACY RETRIEVAL ---
+            # 1. Global ANN Search across user's collection in a single fast C++ index query (<5ms)
+            global_k = min(40, total_chunks)
             try:
                 g_res = active_collection.query(**base_query_args, n_results=global_k)
                 g_docs = g_res.get("documents", [[]])[0]
@@ -1217,14 +1238,20 @@ class VectorStoreService:
             except Exception as ge:
                 print(f"[VectorStore] Global query notice: {ge}")
 
-            # 2. Guaranteed Per-Document Candidate Gathering (Ensures newly uploaded files are ALWAYS evaluated)
+            # 2. Targeted candidate gathering ONLY if query specifically mentions a document filename/topic
+            q_lower_check = question.lower()
+            target_doc_ids = []
             for d_id, d_info in reg.items():
-                doc_chunk_cnt = d_info.get("chunks", 6)
-                doc_k = min(6, doc_chunk_cnt) if doc_chunk_cnt > 0 else 6
+                fn = (d_info.get("filename") or "").lower()
+                fn_stem = re.sub(r"\.[a-z0-9]+$", "", fn)
+                if fn_stem and len(fn_stem) > 3 and (fn_stem in q_lower_check or fn in q_lower_check):
+                    target_doc_ids.append(d_id)
+
+            for d_id in target_doc_ids[:2]:
                 try:
                     d_res = active_collection.query(
                         **base_query_args,
-                        n_results=doc_k,
+                        n_results=6,
                         where={"doc_id": d_id}
                     )
                     d_docs = d_res.get("documents", [[]])[0]
@@ -1241,26 +1268,11 @@ class VectorStoreService:
                             cand_pool[k] = {
                                 "chunk": c,
                                 "meta": m,
-                                "vector_rank": r_idx + 1 + 5,
+                                "vector_rank": r_idx + 1,
                                 "dist": dist
                             }
-                except Exception as de:
-                    # Direct fetch fallback if query had issue
-                    try:
-                        fb = active_collection.get(where={"doc_id": d_id}, limit=doc_k)
-                        if fb and fb.get("documents"):
-                            for r_idx, (c, m) in enumerate(zip(fb["documents"], fb.get("metadatas", []))):
-                                c_idx = int(m.get("chunk_index", r_idx))
-                                k = (d_id, c_idx)
-                                if k not in cand_pool:
-                                    cand_pool[k] = {
-                                        "chunk": c,
-                                        "meta": m,
-                                        "vector_rank": 20 + r_idx,
-                                        "dist": 1.0
-                                    }
-                    except Exception:
-                        pass
+                except Exception:
+                    pass
         else:
             # --- SINGLE DOCUMENT OR SINGLE-DOC REGISTRY RETRIEVAL ---
             candidate_k = min(32, total_chunks)

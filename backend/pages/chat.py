@@ -402,7 +402,7 @@ async def ask_question(
         is_retry = bool(getattr(request, "is_retry", False))
 
         # Retrieve top chunks from ChromaDB from the shared active admin files
-        n_chunks = (10 if is_all else 7) if is_retry else (6 if is_all else 4)
+        n_chunks = (8 if is_all else 6) if is_retry else (5 if is_all else 4)
         chunks, metadatas, raw_sources = await asyncio.to_thread(
             vector_store.retrieve_top_chunks,
             doc_id=None if is_all else file_id,
@@ -497,23 +497,29 @@ async def ask_question(
         )
 
         # Generate sequential follow-up questions
-        try:
-            seq_task = asyncio.to_thread(
-                llm_service.generate_sequential_questions,
-                filename=doc_filename,
-                question=request.question,
-                answer=answer,
-                chunks=chunks
-            )
-            sequential_questions = await asyncio.wait_for(seq_task, timeout=2.5)
-            if not sequential_questions:
-                sequential_questions = llm_service._generate_heuristic_sequential_questions(
-                    doc_filename, request.question, answer, chunks
-                )[:3]
-        except Exception:
+        if is_all:
+            # High-speed heuristic follow-up questions for multi-document search (instantaneous, 0ms latency)
             sequential_questions = llm_service._generate_heuristic_sequential_questions(
                 doc_filename, request.question, answer, chunks
             )[:3]
+        else:
+            try:
+                seq_task = asyncio.to_thread(
+                    llm_service.generate_sequential_questions,
+                    filename=doc_filename,
+                    question=request.question,
+                    answer=answer,
+                    chunks=chunks
+                )
+                sequential_questions = await asyncio.wait_for(seq_task, timeout=1.0)
+                if not sequential_questions:
+                    sequential_questions = llm_service._generate_heuristic_sequential_questions(
+                        doc_filename, request.question, answer, chunks
+                    )[:3]
+            except Exception:
+                sequential_questions = llm_service._generate_heuristic_sequential_questions(
+                    doc_filename, request.question, answer, chunks
+                )[:3]
 
         # Ground citations to retain chunks that genuinely contributed to the answer
         grounded_source_details = []

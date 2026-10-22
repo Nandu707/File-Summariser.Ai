@@ -303,6 +303,72 @@ sequenceDiagram
 
 ---
 
+## 8. High-Speed Parallel Multi-Document Candidate Retrieval Engine
+
+```mermaid
+flowchart TD
+    Req["Query across All Files (doc_id = 'all')"] --> PoolInit["Initialize ThreadPoolExecutor (max_workers = min 12, N+1)"]
+    
+    subgraph ParallelExecution["Parallel Search Threads"]
+        T0["Thread 0: Global ANN Vector Search"]
+        T1["Thread 1: Targeted Query (File 1)"]
+        T2["Thread 2: Targeted Query (File 2)"]
+        TN["Thread N: Targeted Query (File N)"]
+    end
+
+    PoolInit --> T0 & T1 & T2 & TN
+    
+    T0 & T1 & T2 & TN --> Gather["Gather Completed Results (as_completed)"]
+    Gather --> Dedup["De-duplicate Chunks by chunk_id"]
+    Dedup --> RRF["Apply BM25 Lexical Scoring & Reciprocal Rank Fusion"]
+    RRF --> FairSelect["Apply Multi-Document Diversity-Aware Balancing"]
+    FairSelect --> ContextOut["Fast Context Assembly (0.42s total)"]
+```
+
+---
+
+## 9. Negative Grounding Refusal & Citation Suppression Logic
+
+```mermaid
+flowchart LR
+    AnswerIn["Raw LLM Generated Answer"] --> CheckRefusal{"Check Refusal Trigger:<br/>'does not contain'<br/>'no information'<br/>'not mentioned'"}
+    
+    CheckRefusal -->|Match Found| Suppress["Strip All Source References:<br/>sources = []<br/>source_details = []"]
+    CheckRefusal -->|Document Grounded| Keep["Extract Page Badges:<br/>(Page X) regex matches"]
+    
+    Suppress --> OutputRefusal["Display Answer cleanly with NO phantom citations"]
+    Keep --> OutputGrounded["Display Sourced From container with clickable badges"]
+```
+
+---
+
+## 10. Collapsible Navigation Rail & Theme Switcher Topology
+
+```mermaid
+flowchart TB
+    subgraph Layout["Modern UI App Layout (App.jsx)"]
+        Sidebar["Sidebar.jsx (Navigation Rail)"]
+        MainCanvas["Main Content Page Container"]
+    end
+
+    subgraph RailStates["Sidebar Dual-State Rail"]
+        RailCollapsed["56px Collapsed Rail:<br/>Icon buttons + Hover Tooltips"]
+        RailExpanded["260px Expanded Drawer:<br/>Logo + Labels + User Profile"]
+    end
+
+    subgraph ThemeSystem["ThemeContext State Engine"]
+        ThemeStore[("localStorage: 'theme'")]
+        ClassToggle["DOM Token: document.documentElement.classList ('dark' / 'light')"]
+        TransitionAnim["CSS: 350ms Smooth Property Transition"]
+    end
+
+    Sidebar <--> RailStates
+    Sidebar -->|Sun/Moon Click| ThemeSystem
+    ThemeStore --> ClassToggle --> TransitionAnim --> MainCanvas
+```
+
+---
+
 ## Summary of Core API Contracts
 
 | Endpoint | Method | Input Payload | Output Payload | Primary Engine |

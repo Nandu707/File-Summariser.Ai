@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-STRICT_CONTEXT_SYSTEM_PROMPT = """You are an accurate, helpful assistant answering questions strictly based on the provided uploaded file excerpts. Answer only from these currently active files. If a question spans several files, combine them into a clear, cohesive answer.
-Present all information directly and cleanly, cite the source file names when referencing facts, and do not use double asterisks (**) or markdown bolding in your response. If the answer is not in any uploaded file, say so clearly instead of guessing."""
+STRICT_CONTEXT_SYSTEM_PROMPT = """You are an accurate, fast, and helpful assistant answering questions strictly based on the provided uploaded file excerpts. Answer directly and concisely from these currently active files. If a question spans several files, synthesize them into a clear, cohesive answer.
+Present all information directly and cleanly, cite the source file names when referencing facts, and do not use double asterisks (**) or markdown bolding in your response. Keep answers focused, precise, and without conversational filler or repetitive preamble. If the answer is not in any uploaded file, say so clearly instead of guessing."""
 
 class LLMService:
     GEMINI_MODELS = [
@@ -134,6 +134,7 @@ class LLMService:
                             contents=prompt,
                             config=types.GenerateContentConfig(
                                 temperature=temp,
+                                max_output_tokens=1024,
                             )
                         )
                         if response and response.text:
@@ -735,6 +736,9 @@ class LLMService:
         to this file and the previous Q&A exchange.
         """
         base_name = re.sub(r"\.[a-zA-Z0-9]+$", "", filename)
+        is_all_scope = "all uploaded" in filename.lower() or "all files" in filename.lower() or filename.lower() in ("all", "all files")
+        scope_phrase = "across the uploaded documents" if is_all_scope else f"in {base_name}"
+
         combined_text = f"{question} {answer}"
         if chunks:
             combined_text += " " + " ".join(chunks[:2])
@@ -742,14 +746,16 @@ class LLMService:
         # Extract capitalized entities and significant terms (excluding grammar/stop words)
         words = re.findall(r"\b[A-Z][a-zA-Z0-9_\-]{2,}\b", combined_text)
         stopwords = {
-            "what", "when", "where", "which", "with", "from", "that", "this", "these",
-            "those", "have", "been", "were", "about", "could", "would", "should",
-            "there", "their", "under", "after", "before", "page", "pages", "document",
-            "based", "provided", "context", "excerpts", "answer", "question", "stated",
-            "state", "according", "specific", "mentioned", "details", "information",
-            "organization", "published", "edition", "also", "into", "more", "who", "whom",
-            "whose", "why", "how", "does", "did", "can", "could", "will", "would", "shall",
-            "are", "was", "has", "had", "tell", "give", "show", "list", "name", "find"
+            "the", "a", "an", "is", "it", "its", "in", "on", "at", "to", "for", "with",
+            "and", "or", "as", "by", "from", "of", "what", "when", "where", "which",
+            "that", "this", "these", "those", "have", "been", "were", "about", "could",
+            "would", "should", "there", "their", "under", "after", "before", "page",
+            "pages", "document", "documents", "file", "files", "based", "provided",
+            "context", "excerpts", "answer", "question", "stated", "state", "according",
+            "specific", "mentioned", "details", "information", "organization", "published",
+            "edition", "also", "into", "more", "who", "whom", "whose", "why", "how",
+            "does", "did", "can", "could", "will", "would", "shall", "are", "was",
+            "has", "had", "tell", "give", "show", "list", "name", "find", "note"
         }
         entities = []
         for w in words:
@@ -762,17 +768,17 @@ class LLMService:
 
         questions = []
         if len(entities) >= 2:
-            questions.append(f"What additional details about {entities[0]} are mentioned in {base_name}?")
-            questions.append(f"How does {entities[0]} relate to {entities[1]} in the document?")
-            questions.append(f"What further context or next steps regarding this topic are covered in {base_name}?")
+            questions.append(f"What additional details about {entities[0]} are mentioned {scope_phrase}?")
+            questions.append(f"How does {entities[0]} relate to {entities[1]} {scope_phrase}?")
+            questions.append(f"What further context or next steps regarding this topic are covered {scope_phrase}?")
         elif len(entities) == 1:
-            questions.append(f"Can you provide more specific details about {entities[0]} in {base_name}?")
-            questions.append(f"What background or significance does {entities[0]} hold in this text?")
-            questions.append(f"What other findings or sections in {base_name} relate to this?")
+            questions.append(f"Can you provide more specific details about {entities[0]} {scope_phrase}?")
+            questions.append(f"What background or significance does {entities[0]} hold {scope_phrase}?")
+            questions.append(f"What other findings or sections {scope_phrase} relate to this?")
         else:
-            questions.append(f"Can you provide more detailed context about this point from {base_name}?")
-            questions.append(f"What related findings or explanations are provided in {base_name}?")
-            questions.append(f"What are the subsequent conclusions or outcomes discussed in {base_name}?")
+            questions.append(f"Can you provide more detailed context about this point {scope_phrase}?")
+            questions.append(f"What related findings or explanations are provided {scope_phrase}?")
+            questions.append(f"What are the subsequent conclusions or outcomes discussed {scope_phrase}?")
 
         return questions[:3]
 

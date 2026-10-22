@@ -696,11 +696,11 @@ export default function ChatWindow({
       ];
 
   return (
-    <section className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200/90 shadow-sm flex flex-col h-full overflow-hidden relative">
+    <section className="flex-1 min-h-0 bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200/90 dark:border-neutral-800 shadow-sm flex flex-col h-full overflow-hidden relative transition-colors duration-200">
       {/* Top Header - Fixed Non-Wrapping Header with Visible Overflow for Dropdowns */}
-      <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 bg-slate-50/80 backdrop-blur-md flex items-center justify-between gap-3 overflow-visible relative z-30 select-none">
+      <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 border-b border-slate-200/90 dark:border-neutral-800 bg-slate-50/80 dark:bg-[#171717] backdrop-blur-md flex items-center justify-between gap-3 overflow-visible relative z-30 select-none transition-colors">
         <div className="min-w-0 flex-1 flex items-center space-x-3">
-          <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-200/80 flex-shrink-0 shadow-2xs">
+          <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/60 flex-shrink-0 shadow-2xs">
             <Bot className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
@@ -716,16 +716,16 @@ export default function ChatWindow({
                     if (e.key === 'Escape') setIsEditingTitle(false);
                   }}
                   onBlur={handleSaveRename}
-                  className="bg-white border border-indigo-400 rounded px-2 py-0.5 text-sm font-bold text-slate-900 focus:outline-none max-w-xs"
+                  className="bg-white dark:bg-[#262626] border border-indigo-400 dark:border-indigo-500 rounded px-2 py-0.5 text-sm font-bold text-slate-900 dark:text-white focus:outline-none max-w-xs"
                 />
               ) : (
                 <div className="flex items-center space-x-1.5 min-w-0">
-                  <h2 className="text-sm font-bold text-slate-900 tracking-tight truncate max-w-sm" title={sessionTitle}>
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate max-w-sm" title={sessionTitle}>
                     {sessionTitle}
                   </h2>
                   <button
                     onClick={handleStartRename}
-                    className="p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-200/60 transition-colors"
+                    className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-neutral-200 rounded hover:bg-slate-200/60 dark:hover:bg-neutral-800 transition-colors"
                     title="Rename chat"
                   >
                     <Edit2 className="w-3 h-3" />
@@ -742,23 +742,23 @@ export default function ChatWindow({
                   <button
                     type="button"
                     onClick={() => setShowScopeDropdown((prev) => !prev)}
-                    className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border transition-all cursor-pointer shadow-2xs active:scale-95 group bg-indigo-50 hover:bg-indigo-100/90 text-indigo-700 border-indigo-200/90 hover:border-indigo-300"
+                    className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border transition-all cursor-pointer shadow-2xs active:scale-95 group bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100/90 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border-indigo-200/90 dark:border-indigo-800/70 hover:border-indigo-300 dark:hover:border-indigo-700"
                     title="Change chat scope (All files or select a specific document)"
                   >
                     <span className="truncate max-w-[140px] sm:max-w-[200px]">
                       All files ({docCount} active)
                     </span>
                     <ChevronDown
-                      className={`w-3 h-3 text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${
-                        showScopeDropdown ? 'rotate-180 text-indigo-600' : ''
+                      className={`w-3 h-3 text-slate-400 dark:text-neutral-400 group-hover:text-slate-700 dark:group-hover:text-neutral-200 transition-transform duration-200 ${
+                        showScopeDropdown ? 'rotate-180 text-indigo-600 dark:text-indigo-400' : ''
                       }`}
                     />
                   </button>
 
                   {/* Scope Selector Dropdown */}
                   {showScopeDropdown && (
-                    <div className="absolute top-full left-0 mt-1.5 w-80 bg-white border border-slate-200/90 rounded-2xl shadow-2xl shadow-slate-900/15 z-50 p-2.5 animate-in fade-in zoom-in-95 duration-150">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="absolute top-full left-0 mt-1.5 w-80 bg-white dark:bg-[#1e1e1e] border border-slate-200/90 dark:border-neutral-800 rounded-2xl shadow-2xl shadow-slate-900/15 dark:shadow-black/40 z-50 p-2.5 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-400">
                         Chat Scope
                       </div>
 
@@ -768,44 +768,44 @@ export default function ChatWindow({
                         onClick={() => handleScopeSelect('all')}
                         className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
                           isAllDocs
-                            ? 'bg-indigo-50/90 text-indigo-900 font-semibold'
-                            : 'hover:bg-slate-50 text-slate-700'
+                            ? 'bg-indigo-50/90 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 font-semibold'
+                            : 'hover:bg-slate-50 dark:hover:bg-neutral-800/80 text-slate-700 dark:text-neutral-200'
                         }`}
                       >
                         <div className="flex items-center space-x-2.5 min-w-0">
-                          <div className={`p-1.5 rounded-lg flex-shrink-0 ${isAllDocs ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'}`}>
+                          <div className={`p-1.5 rounded-lg flex-shrink-0 ${isAllDocs ? 'bg-indigo-600 text-white' : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'}`}>
                             <Layers className="w-3.5 h-3.5" />
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold truncate">All files ({docCount} active)</p>
-                            <p className="text-[10px] text-slate-400">Search across all active documents</p>
+                            <p className="text-[10px] text-slate-400 dark:text-neutral-500">Search across all active documents</p>
                           </div>
                         </div>
-                        {isAllDocs && <Check className="w-4 h-4 text-indigo-600 flex-shrink-0 ml-1" />}
+                        {isAllDocs && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0 ml-1" />}
                       </button>
 
-                      <div className="border-t border-slate-100 my-1.5" />
+                      <div className="border-t border-slate-100 dark:border-neutral-800 my-1.5" />
 
-                      <div className="px-2 py-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <div className="px-2 py-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-neutral-400">
                         <span>Or Choose Specific File</span>
                         {documents.length > 0 && <span>{documents.length} files</span>}
                       </div>
 
                       {documents.length > 5 && (
                         <div className="relative my-1 px-1">
-                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <Search className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                           <input
                             type="text"
                             placeholder="Filter files..."
                             value={scopeSearch}
                             onChange={(e) => setScopeSearch(e.target.value)}
-                            className="w-full pl-7.5 pr-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-indigo-400 transition-colors"
+                            className="w-full pl-7.5 pr-2 py-1 text-xs bg-slate-50 dark:bg-[#262626] border border-slate-200 dark:border-neutral-700 rounded-lg text-slate-900 dark:text-neutral-100 placeholder:text-slate-400 dark:placeholder:text-neutral-500 focus:outline-none focus:bg-white dark:focus:bg-[#2a2a2a] focus:border-indigo-400 transition-colors"
                           />
                         </div>
                       )}
 
                       {documents.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-slate-400 italic">
+                        <div className="px-3 py-2 text-xs text-slate-400 dark:text-neutral-500 italic">
                           No documents uploaded yet
                         </div>
                       ) : (
@@ -823,31 +823,31 @@ export default function ChatWindow({
                                   onClick={() => handleScopeSelect('file', doc)}
                                   className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all cursor-pointer ${
                                     isSelected
-                                      ? 'bg-indigo-50/90 text-indigo-900 font-semibold'
-                                      : 'hover:bg-slate-50 text-slate-700'
+                                      ? 'bg-indigo-50/90 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 font-semibold'
+                                      : 'hover:bg-slate-50 dark:hover:bg-neutral-800/80 text-slate-700 dark:text-neutral-200'
                                   }`}
                                 >
                                   <div className="flex items-center space-x-2.5 min-w-0">
-                                    <div className={`p-1.5 rounded-lg flex-shrink-0 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                    <div className={`p-1.5 rounded-lg flex-shrink-0 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-400'}`}>
                                       <FileText className="w-3.5 h-3.5" />
                                     </div>
                                     <div className="min-w-0">
                                       <p className="text-xs font-medium truncate" title={doc.filename}>
                                         {doc.filename}
                                       </p>
-                                      <p className="text-[10px] text-slate-400">
+                                      <p className="text-[10px] text-slate-400 dark:text-neutral-500">
                                         {doc.total_pages ? `${doc.total_pages} pages` : 'Document'}
                                       </p>
                                     </div>
                                   </div>
-                                  {isSelected && <Check className="w-4 h-4 text-indigo-600 flex-shrink-0 ml-1" />}
+                                  {isSelected && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400 flex-shrink-0 ml-1" />}
                                 </button>
                               );
                             })}
                           {documents.filter((doc) =>
                             (doc.filename || '').toLowerCase().includes(scopeSearch.toLowerCase())
                           ).length === 0 && (
-                            <div className="px-3 py-2 text-xs text-slate-400 italic text-center">
+                            <div className="px-3 py-2 text-xs text-slate-400 dark:text-neutral-500 italic text-center">
                               No matching files found
                             </div>
                           )}
@@ -924,16 +924,16 @@ export default function ChatWindow({
       {/* Messages Scroll Area */}
       <div
         ref={chatContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6 bg-gradient-to-b from-white via-white to-slate-50/40"
+        className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-6 bg-white dark:bg-[#171717] transition-colors"
       >
         {docCount === 0 && isAllDocs && messages.length === 0 ? (
           /* Empty State: No Documents Uploaded */
           <div className="h-full flex flex-col items-center justify-center text-center px-4 max-w-md mx-auto py-12">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mb-4 shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 shadow-sm">
               <Layers className="w-7 h-7" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">No Documents Uploaded Yet</h3>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">No Documents Uploaded Yet</h3>
+            <p className="text-xs text-slate-500 dark:text-neutral-400 mt-2 leading-relaxed">
               Upload your PDF, Word (.docx), or plain text (.txt) files in the <strong>Documents & Upload</strong> tab. The assistant will index and search from all uploaded files to answer your questions.
             </p>
             <button
@@ -946,30 +946,30 @@ export default function ChatWindow({
           </div>
         ) : loadingChat ? (
           <div className="h-full flex flex-col items-center justify-center space-y-3 py-16">
-            <Loader2 className="w-7 h-7 text-indigo-600 animate-spin" />
-            <p className="text-xs text-slate-500 font-medium">Loading conversation history...</p>
+            <Loader2 className="w-7 h-7 text-indigo-600 dark:text-indigo-400 animate-spin" />
+            <p className="text-xs text-slate-500 dark:text-neutral-400 font-medium">Loading conversation history...</p>
           </div>
         ) : messages.length === 0 ? (
           /* Empty / Welcome State with Suggested Questions */
           <div className="h-full flex flex-col justify-center items-center text-center px-4 max-w-lg mx-auto py-10">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mb-4 shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 shadow-sm">
               <Sparkles className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
               {isAllDocs ? `Ask anything across your ${docCount} active files` : `Chat about ${sessionTitle}`}
             </h3>
-            <p className="text-xs text-slate-500 mt-1 mb-6">
+            <p className="text-xs text-slate-500 dark:text-neutral-400 mt-1 mb-6">
               The LLM will automatically retrieve top vector excerpts from active files and synthesize accurate answers with citations.
             </p>
 
             <div className="w-full space-y-2 text-left">
               <div className="flex items-center justify-between mb-1">
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center space-x-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                <p className="text-[11px] font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>Suggested Questions:</span>
                 </p>
                 {loadingSuggestions && (
-                  <span className="text-[10px] text-indigo-600 flex items-center space-x-1 animate-pulse">
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 flex items-center space-x-1 animate-pulse">
                     <Loader2 className="w-3 h-3 animate-spin" />
                     <span>Analyzing...</span>
                   </span>
@@ -980,10 +980,10 @@ export default function ChatWindow({
                 <button
                   key={idx}
                   onClick={() => handleSend(prompt)}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-xs text-slate-700 hover:text-indigo-900 transition-all group shadow-2xs active:scale-[0.99] cursor-pointer"
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-50/70 dark:bg-[#212121] hover:bg-indigo-50/70 dark:hover:bg-neutral-800 border border-slate-200 dark:border-neutral-700/80 hover:border-indigo-300 dark:hover:border-neutral-600 text-xs text-slate-700 dark:text-neutral-200 hover:text-indigo-900 dark:hover:text-white transition-all group shadow-2xs active:scale-[0.99] cursor-pointer"
                 >
                   <span className="truncate pr-2 font-medium">{prompt}</span>
-                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 transition-colors" />
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex-shrink-0 transition-colors" />
                 </button>
               ))}
             </div>
@@ -1053,13 +1053,13 @@ export default function ChatWindow({
                     msg.role === 'user'
                       ? 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 text-white shadow-xs rounded-tr-xs group'
                       : msg.isError
-                      ? 'bg-rose-50 border border-rose-200 text-rose-800 rounded-tl-xs'
-                      : 'bg-white border border-slate-200/90 text-slate-800 shadow-xs rounded-tl-xs'
+                      ? 'bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-200 rounded-tl-xs'
+                      : 'bg-white dark:bg-[#212121] border border-slate-200/90 dark:border-neutral-700/80 text-slate-800 dark:text-neutral-100 shadow-xs rounded-tl-xs'
                   }`}
                 >
                   {/* Markdown Rendered Content */}
                   {msg.role === 'assistant' && !msg.isError ? (
-                    <div className="prose prose-slate prose-sm max-w-none space-y-2">
+                    <div className="prose prose-slate dark:prose-invert prose-sm max-w-none space-y-2">
                       <ReactMarkdown>{cleanInlineSources(msg.content || msg.text || '')}</ReactMarkdown>
                     </div>
                   ) : (
@@ -1071,9 +1071,9 @@ export default function ChatWindow({
                     (Array.isArray(msg.source_details) && msg.source_details.length > 0) ||
                     (Array.isArray(msg.sources) && msg.sources.length > 0)
                   ) && (
-                    <div className="mt-3.5 pt-3 border-t border-slate-100 space-y-1.5">
-                      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center space-x-1">
-                        <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                    <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-neutral-800 space-y-1.5">
+                      <p className="text-[11px] font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider flex items-center space-x-1">
+                        <BookOpen className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                         <span>Sourced From:</span>
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -1088,10 +1088,10 @@ export default function ChatWindow({
                             return isSourceDeleted ? (
                               <span
                                 key={sIdx}
-                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200"
+                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-neutral-800 text-slate-500 dark:text-neutral-400 border border-slate-200 dark:border-neutral-700"
                                 title="This file was deleted from active storage"
                               >
-                                <FileText className="w-3 h-3 text-slate-400" />
+                                <FileText className="w-3 h-3 text-slate-400 dark:text-neutral-500" />
                                 <span>{fn} (deleted) • Page {detail.page}</span>
                               </span>
                             ) : (
@@ -1099,12 +1099,12 @@ export default function ChatWindow({
                                 key={sIdx}
                                 type="button"
                                 onClick={() => handleOpenSourcePdf(fid, detail.page, fn)}
-                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
+                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all active:scale-95 shadow-2xs group cursor-pointer"
                                 title={`View ${fn} at Page ${detail.page} inside site`}
                               >
-                                <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
+                                <FileText className="w-3 h-3 text-indigo-500 dark:text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
                                 <span>{fn ? `${fn} • ` : ''}Page {detail.page}</span>
-                                <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 ml-0.5" />
+                                <ExternalLink className="w-3 h-3 text-indigo-400 dark:text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 ml-0.5" />
                               </button>
                             );
                           })
@@ -1124,11 +1124,11 @@ export default function ChatWindow({
                                 key={sIdx}
                                 type="button"
                                 onClick={() => handleOpenSourcePdf(targetDocId, pageNum, fn)}
-                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 hover:border-indigo-300 transition-all active:scale-95 shadow-2xs group cursor-pointer"
+                                className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all active:scale-95 shadow-2xs group cursor-pointer"
                               >
-                                <FileText className="w-3 h-3 text-indigo-500 group-hover:text-indigo-600" />
+                                <FileText className="w-3 h-3 text-indigo-500 dark:text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
                                 <span>{fn ? `${fn} • ` : ''}Page {pageNum}</span>
-                                <ExternalLink className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 ml-0.5" />
+                                <ExternalLink className="w-3 h-3 text-indigo-400 dark:text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 ml-0.5" />
                               </button>
                             );
                           })
@@ -1139,9 +1139,9 @@ export default function ChatWindow({
 
                   {/* Sequential Follow-up Questions Suggested by LLM */}
                   {msg.role === 'assistant' && !msg.isError && Array.isArray(msg.suggested_questions) && msg.suggested_questions.length > 0 && !isFileDeleted && (
-                    <div className="mt-3.5 pt-3 border-t border-slate-100">
-                      <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-indigo-700 mb-2">
-                        <Sparkles className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                    <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-neutral-800">
+                      <div className="flex items-center space-x-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-400 mb-2">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 animate-pulse" />
                         <span>Suggested Follow-up Questions:</span>
                       </div>
                       <div className="grid grid-cols-1 gap-1.5">
@@ -1151,10 +1151,10 @@ export default function ChatWindow({
                             type="button"
                             onClick={() => handleSend(seqQ)}
                             disabled={loading || isFileDeleted}
-                            className="group w-full flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-slate-50/90 hover:bg-indigo-50/80 border border-slate-200/80 hover:border-indigo-300 text-left text-xs text-slate-700 hover:text-indigo-900 transition-all shadow-2xs active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+                            className="group w-full flex items-center justify-between p-2 sm:p-2.5 rounded-xl bg-slate-50/90 dark:bg-[#1a1a1a] hover:bg-indigo-50/80 dark:hover:bg-neutral-800 border border-slate-200/80 dark:border-neutral-700/80 hover:border-indigo-300 dark:hover:border-neutral-600 text-left text-xs text-slate-700 dark:text-neutral-200 hover:text-indigo-900 dark:hover:text-white transition-all shadow-2xs active:scale-[0.99] disabled:opacity-50 cursor-pointer"
                           >
                             <span className="truncate pr-2 font-medium">{seqQ}</span>
-                            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform flex-shrink-0" />
+                            <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform flex-shrink-0" />
                           </button>
                         ))}
                       </div>
@@ -1163,7 +1163,7 @@ export default function ChatWindow({
 
                   {/* Footer details */}
                   <div className={`mt-2.5 flex items-center justify-between text-[10px] ${
-                    msg.role === 'user' ? 'text-indigo-100' : 'text-slate-400'
+                    msg.role === 'user' ? 'text-indigo-100' : 'text-slate-400 dark:text-neutral-400'
                   }`}>
                     <div className="flex items-center space-x-2">
                       <span>{msg.time || msg.timestamp}</span>
@@ -1172,10 +1172,10 @@ export default function ChatWindow({
                           type="button"
                           onClick={() => handleRegenerate(idx)}
                           disabled={loading}
-                          className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group/retry"
+                          className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 text-slate-500 dark:text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group/retry"
                           title="Try again (redo search & generate another response)"
                         >
-                          <RotateCcw className="w-3 h-3 group-hover/retry:-rotate-90 transition-transform duration-200 text-slate-400 group-hover/retry:text-indigo-600" />
+                          <RotateCcw className="w-3 h-3 group-hover/retry:-rotate-90 transition-transform duration-200 text-slate-400 dark:text-neutral-400 group-hover/retry:text-indigo-600 dark:group-hover/retry:text-indigo-400" />
                           <span className="font-medium text-[10px]">Try again</span>
                         </button>
                       )}
@@ -1214,17 +1214,17 @@ export default function ChatWindow({
                     {msg.role === 'assistant' && !msg.isError && (
                       <button
                         onClick={() => copyToClipboard(msg.content || msg.text, idx)}
-                        className="hover:text-slate-700 transition-colors flex items-center space-x-1 cursor-pointer"
+                        className="hover:text-slate-700 dark:hover:text-neutral-200 transition-colors flex items-center space-x-1 cursor-pointer"
                         title="Copy response"
                       >
                         {copiedIdx === idx ? (
                           <>
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            <span className="text-emerald-600 font-medium">Copied</span>
+                            <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied</span>
                           </>
                         ) : (
                           <>
-                            <Copy className="w-3 h-3 text-slate-400" />
+                            <Copy className="w-3 h-3 text-slate-400 dark:text-neutral-400" />
                             <span>Copy</span>
                           </>
                         )}
@@ -1249,12 +1249,12 @@ export default function ChatWindow({
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-1">
               <Bot className="w-4 h-4" />
             </div>
-            <div className="bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-4 text-xs text-slate-700 shadow-xs space-y-1.5">
-              <div className="flex items-center space-x-2 text-indigo-600 font-semibold">
+            <div className="bg-white dark:bg-[#212121] border border-slate-200/90 dark:border-neutral-700/80 rounded-2xl rounded-tl-xs p-4 text-xs text-slate-700 dark:text-neutral-300 shadow-xs space-y-1.5">
+              <div className="flex items-center space-x-2 text-indigo-600 dark:text-indigo-400 font-semibold">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>Searching ChromaDB Across Active Files...</span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 dark:text-neutral-500">
                 Retrieving top vector excerpts using reciprocal rank fusion and synthesizing answer.
               </p>
             </div>
@@ -1265,7 +1265,7 @@ export default function ChatWindow({
       </div>
 
       {/* Input Form with Disabled State for Deleted Files */}
-      <div className="flex-shrink-0 p-4 border-t border-slate-200/90 bg-white/95 backdrop-blur-md relative">
+      <div className="flex-shrink-0 p-4 border-t border-slate-200/90 dark:border-neutral-800 bg-white/95 dark:bg-[#171717] backdrop-blur-md relative transition-colors">
         {/* Undo Toast Notification */}
         {toastMessage && (
           <div className="flex items-center justify-center mb-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -1297,7 +1297,7 @@ export default function ChatWindow({
                 ? 'Ask a question across all uploaded documents... (Enter to send, Shift+Enter for newline)'
                 : `Ask a question about ${sessionTitle}... (Enter to send, Shift+Enter for newline)`
             }
-            className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 custom-scrollbar rounded-xl px-4 py-3 pr-28 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all resize-none min-h-[52px] max-h-36 overflow-y-auto disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full bg-slate-50/60 dark:bg-[#212121] focus:bg-white dark:focus:bg-[#262626] border border-slate-200 dark:border-neutral-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 custom-scrollbar rounded-xl px-4 py-3 pr-28 text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-neutral-500 focus:outline-none transition-all resize-none min-h-[52px] max-h-36 overflow-y-auto disabled:opacity-60 disabled:cursor-not-allowed"
           />
 
           <div className="absolute right-2.5 bottom-2.5 flex items-center space-x-1.5">
@@ -1372,41 +1372,41 @@ export default function ChatWindow({
           }}
         >
           <div
-            className="w-full max-w-md bg-white rounded-2xl border border-slate-200/90 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
+            className="w-full max-w-md bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200/90 dark:border-neutral-800 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close Button */}
             <button
               type="button"
               onClick={() => setShowDeleteModal(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
               aria-label="Close dialog"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="flex items-start space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-center flex-shrink-0 text-rose-600 shadow-2xs">
-                <Trash2 className="w-6 h-6 text-rose-600" />
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200/80 dark:border-rose-900/60 flex items-center justify-center flex-shrink-0 text-rose-600 dark:text-rose-400 shadow-2xs">
+                <Trash2 className="w-6 h-6 text-rose-600 dark:text-rose-400" />
               </div>
 
               <div className="flex-1 min-w-0 pt-0.5">
-                <h3 id="delete-chat-dialog-title" className="text-base font-bold text-slate-900 tracking-tight">
-                  Are you sure want to delete the file
+                <h3 id="delete-chat-dialog-title" className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
+                  Are you sure want to delete this chat?
                 </h3>
-                <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-neutral-400 leading-relaxed">
                   This conversation history will be permanently deleted and cannot be undone.
                 </p>
 
-                <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center space-x-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-neutral-800/80 border border-slate-200/80 dark:border-neutral-700 flex items-center space-x-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-center flex-shrink-0">
                     <MessageSquare className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-slate-800 truncate" title={sessionTitle}>
+                    <p className="text-xs font-semibold text-slate-800 dark:text-neutral-200 truncate" title={sessionTitle}>
                       {sessionTitle}
                     </p>
-                    <p className="text-[11px] text-slate-500 truncate">
+                    <p className="text-[11px] text-slate-500 dark:text-neutral-400 truncate">
                       {messages.length} messages • {isAllDocs ? 'All files' : activeSession?.file_name || 'Document'}
                     </p>
                   </div>
@@ -1415,11 +1415,11 @@ export default function ChatWindow({
             </div>
 
             {/* Actions */}
-            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100">
+            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100 dark:border-neutral-800">
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 transition-all cursor-pointer active:scale-95"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200/80 dark:hover:bg-neutral-700 border border-slate-200/60 dark:border-neutral-700 transition-all cursor-pointer active:scale-95"
               >
                 Cancel
               </button>

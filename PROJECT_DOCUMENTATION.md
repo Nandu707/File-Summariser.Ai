@@ -86,18 +86,27 @@ Task-RAG/
 │       ├── main.jsx                    # React DOM entrypoint
 │       ├── App.jsx                     # Master application shell, tab routing & active document state
 │       ├── App.css                     # Custom animations, glow utility styles, and scrollbars
-│       ├── index.css                   # Core design system & Tailwind directives
+│       ├── index.css                   # Core design system, Tailwind directives & dark theme rules
 │       ├── api.js                      # Centralized API service connecting to FastAPI backend
 │       ├── assets/                     # Graphic assets and logos
+│       ├── context/                    # React Contexts
+│       │   └── ThemeContext.jsx        # Global Light/Dark theme state manager & localStorage persistence
 │       ├── pages/                      # Dedicated Top-Level Pages
 │       │   ├── ChatPage.jsx            # Main interactive chat & question-answering page
-│       │   ├── DocumentsPage.jsx       # Document management, metadata cards & inline viewing
+│       │   ├── DocumentsPage.jsx       # Document management, metadata cards, dropzones & inline viewing
+│       │   ├── LoginPage.jsx           # User authentication & session sign-in
+│       │   ├── SignupPage.jsx          # User registration & workspace access request
+│       │   ├── UsersPage.jsx           # Role & access management dashboard for Admins
 │       │   ├── SystemPage.jsx          # Live system diagnostics, ChromaDB stats & provider status
 │       │   └── UploadPage.jsx          # Full drag-and-drop file upload & format guidance
 │       └── components/
+│           ├── Sidebar.jsx             # Collapsible ChatGPT-style navigation rail (56px/260px) & theme switch
 │           ├── ChatWindow.jsx          # Right panel markdown chat, citations, suggestions & clear chat
-│           ├── DocumentSidebar.jsx     # Document switcher sidebar with format badges
-│           ├── DocumentPageModal.jsx   # In-app document viewer modal for cited pages
+│           ├── ChatArea.jsx            # Markdown stream rendering, code syntax & table formatting
+│           ├── ConfirmModal.jsx        # Reusable modal confirmation for deletions & user status modifications
+│           ├── DocumentPageModal.jsx   # In-app document viewer modal for cited pages with dual-mode tabs
+│           ├── DocumentSidebar.jsx     # Document switcher sidebar delegate
+│           ├── FileUploader.jsx        # Drag-and-drop file uploader component with format validation
 │           ├── Navbar.jsx              # Navigation header bar with live backend health monitor
 │           └── UploadModal.jsx         # Modal dialog variant for multi-format file upload
 │
@@ -177,32 +186,72 @@ Task-RAG/
 
 ---
 
-### 4. Frontend Application Components (`frontend/src/`)
+### 4. Frontend Application Architecture (`frontend/src/`)
 
-#### [`App.jsx`](file:///e:/Task-RAG/frontend/src/App.jsx)
-- **Role**: Root split-screen layout orchestrator.
-- **State**: Tracks active `docId`, `documentInfo`, backend health polling, and `isAnswering` lock state.
-
-#### [`components/FileUploader.jsx`](file:///e:/Task-RAG/frontend/src/components/FileUploader.jsx)
-- **Role**: Left sidebar document upload dropzone and document switcher.
+#### [`context/ThemeContext.jsx`](file:///e:/Task-RAG/frontend/src/context/ThemeContext.jsx)
+- **Role**: Central theme state provider (`ThemeProvider`, `useTheme`).
 - **Features**:
-  - Drag-and-drop and file input supporting `.pdf`, `.txt`, `.docx`, and `.doc`.
-  - Dynamic format badges: **PDF** (red), **TXT** (emerald), and **DOCX / DOC** (indigo/blue).
-  - Lock state: Prevents file switching while an answer is actively being generated.
-  - Clean display: No technical `doc_id` exposed to users.
+  - Manages global `'dark'` or `'light'` mode state across the entire web application.
+  - Persists preference in `localStorage` under key `'theme'`.
+  - Automatically queries `window.matchMedia('(prefers-color-scheme: dark)')` when no stored preference exists.
+  - Dynamically updates `document.documentElement` with `.dark` or `.light` class tokens.
+
+#### [`components/Sidebar.jsx`](file:///e:/Task-RAG/frontend/src/components/Sidebar.jsx)
+- **Role**: Modern collapsible dual-mode navigation rail (ChatGPT / modern AI interface pattern).
+- **Features**:
+  - **Collapsed State (56px)**: Slim icon-only rail with hover tooltip labels, active indicator bars, and theme toggle.
+  - **Expanded State (260px)**: Displays full logo, navigation labels, status pills, user avatar, and workspace links.
+  - Consolidated top navigation tabs (`Chat`, `Documents`, `Users`, `System`, `Upload`), freeing full vertical viewport height.
+  - Integrated theme toggle button with smooth Sun/Moon icon transitions and profile logout trigger.
+
+#### [`pages/ChatPage.jsx`](file:///e:/Task-RAG/frontend/src/pages/ChatPage.jsx)
+- **Role**: Split-screen primary workspace containing document selector list and interactive chat canvas.
+- **Features**: Real-time synchronization with active document, instant suggested questions display, and auto-scroll message stream.
+
+#### [`pages/UsersPage.jsx`](file:///e:/Task-RAG/frontend/src/pages/UsersPage.jsx)
+- **Role**: Administrative user access and permission governance dashboard.
+- **Features**:
+  - Filter tabs for All, Active, Pending, and Disabled users with live count chips.
+  - High-contrast role badges (`Admin` & `User`) and status badges (`Approved`, `Pending`, `Rejected`, `Disabled`).
+  - Search input filtering by name or email.
+  - One-click status toggling with confirmation modals.
+
+#### [`pages/DocumentsPage.jsx`](file:///e:/Task-RAG/frontend/src/pages/DocumentsPage.jsx)
+- **Role**: Central document repository management.
+- **Features**:
+  - Full-width and side-by-side drag-and-drop upload dropzones with format badges.
+  - Real-time indexing progress and live upload queue status cards.
+  - Multi-card document grid with chunk counts, page counts, upload dates, direct inspection tabs, and deletion modal triggers.
 
 #### [`components/ChatWindow.jsx`](file:///e:/Task-RAG/frontend/src/components/ChatWindow.jsx)
-- **Role**: Right panel markdown conversation interface.
+- **Role**: Interactive markdown conversation interface.
 - **Features**:
-  - Automatically loads persistent conversation history from SQLite whenever a file is selected.
-  - Displays dynamic suggested questions tailored to the active file when no chat messages exist.
-  - "Clear Chat" button in the header allowing users to reset document conversation on demand.
-  - Clickable citation badges (`Page X`) that notify and highlight the source page.
-  - Custom vertical scrollbar on the chat container and ask input area.
-  - Fully locked send button and file-switching during answer generation.
+  - High-speed RAG streaming with deterministic context grounding.
+  - Sourced From citation block with interactive page tags (`Page X`) opening the document page modal.
+  - Automatic suppression of citations on out-of-scope negative responses.
+  - Dynamic Suggested Follow-up Questions rendered as high-contrast interactive cards.
+  - Scope dropdown ("All Files" vs single document).
+  - "Clear Chat" history controls with confirmation dialog.
 
-#### [`components/DocumentSidebar.jsx`](file:///e:/Task-RAG/frontend/src/components/DocumentSidebar.jsx) & [`components/UploadModal.jsx`](file:///e:/Task-RAG/frontend/src/components/UploadModal.jsx)
-- Reusable modal dialog and sidebar variants supporting multi-format files and format badges.
+#### [`components/ConfirmModal.jsx`](file:///e:/Task-RAG/frontend/src/components/ConfirmModal.jsx)
+- **Role**: Reusable confirmation dialog for high-stakes actions.
+- **Features**: Smooth glassmorphic backdrop, variant-tailored icons (danger/warning/info), user preview card, and seamless dark mode styling.
+
+#### [`components/DocumentPageModal.jsx`](file:///e:/Task-RAG/frontend/src/components/DocumentPageModal.jsx)
+- **Role**: Deep-linked document page inspector.
+- **Features**:
+  - Displays exact text and structure of cited pages.
+  - Dual-mode tabs: Rendered Document View (`<iframe>` PDF deep-link `#page=X`) and Extracted Text View with copy utility.
+  - Previous / Next pagination navigation.
+
+#### [`index.css`](file:///e:/Task-RAG/frontend/src/index.css)
+- **Role**: Global design system tokens and theme transitions.
+- **Features**:
+  - Custom scrollbars (`custom-scrollbar`) for chat and document lists.
+  - 350ms smooth CSS transitions across background colors, text colors, and borders (`transition: background-color 0.35s, border-color 0.35s`).
+  - Route enter keyframe animations (`@keyframes pageEnter`).
+  - Precision `:not([class*="dark:"])` safety rules preventing style collisions.
 
 #### [`api.js`](file:///e:/Task-RAG/frontend/src/api.js)
-- Clean, centralized Fetch/Axios API client wrappers for all backend endpoints.
+- **Role**: Centralized Fetch/Axios API client wrappers for all backend endpoints.
+

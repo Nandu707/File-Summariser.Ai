@@ -172,35 +172,35 @@ export default function UsersPage({ onPendingCountChange }) {
     switch (status) {
       case 'approved':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle className="w-3 h-3 text-emerald-600" />
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 shadow-2xs">
+            <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
             <span className="capitalize">Approved</span>
           </span>
         );
       case 'pending':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-            <Clock className="w-3 h-3 text-amber-600" />
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 animate-pulse shadow-2xs">
+            <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
             <span className="capitalize">Pending Approval</span>
           </span>
         );
       case 'rejected':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <XCircle className="w-3 h-3 text-rose-600" />
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60 shadow-2xs">
+            <XCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
             <span className="capitalize">Rejected</span>
           </span>
         );
       case 'disabled':
         return (
-          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-            <UserX className="w-3 h-3 text-slate-500" />
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-400 border border-slate-200 dark:border-neutral-700 shadow-2xs">
+            <UserX className="w-3 h-3 text-slate-500 dark:text-neutral-400" />
             <span className="capitalize">Disabled</span>
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-400 border dark:border-neutral-700">
             {status}
           </span>
         );
@@ -210,10 +210,10 @@ export default function UsersPage({ onPendingCountChange }) {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar w-full p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-neutral-800">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center space-x-2">
-            <Shield className="w-5 h-5 text-indigo-600" />
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center space-x-2">
+            <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <span>User Management & Access Control</span>
             {counts.pending > 0 && (
               <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white shadow-xs">
@@ -221,7 +221,7 @@ export default function UsersPage({ onPendingCountChange }) {
               </span>
             )}
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-neutral-400 mt-1">
             Review registration requests, approve new accounts, and manage permissions.
           </p>
         </div>
@@ -230,10 +230,10 @@ export default function UsersPage({ onPendingCountChange }) {
           <button
             onClick={fetchUsers}
             disabled={loading}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 shadow-2xs transition-all active:scale-95"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-neutral-700 hover:border-slate-300 dark:hover:border-neutral-600 shadow-2xs transition-all active:scale-95 cursor-pointer"
             title="Refresh user list"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600 dark:text-indigo-400' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
@@ -241,14 +241,14 @@ export default function UsersPage({ onPendingCountChange }) {
 
       {/* Error Banner */}
       {error && (
-        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center justify-between">
+        <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-800 dark:text-rose-200 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 flex-shrink-0" />
             <span>{error}</span>
           </div>
           <button
             onClick={() => setError(null)}
-            className="text-xs font-semibold text-rose-600 hover:text-rose-800 underline ml-2"
+            className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 underline ml-2 cursor-pointer"
           >
             Dismiss
           </button>
@@ -271,10 +271,10 @@ export default function UsersPage({ onPendingCountChange }) {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-white text-slate-600 hover:bg-slate-100/80 border border-slate-200'
+                    : 'bg-white dark:bg-[#1a1a1a] text-slate-600 dark:text-neutral-300 hover:bg-slate-100/80 dark:hover:bg-neutral-800 border border-slate-200 dark:border-neutral-700/80'
                 }`}
               >
                 <span>{tab.label}</span>
@@ -283,8 +283,8 @@ export default function UsersPage({ onPendingCountChange }) {
                     isActive
                       ? 'bg-white/20 text-white'
                       : tab.highlight
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-slate-100 text-slate-600'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                      : 'bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 border border-slate-200/80 dark:border-neutral-700'
                   }`}
                 >
                   {tab.count}
@@ -296,36 +296,36 @@ export default function UsersPage({ onPendingCountChange }) {
 
         {/* Search */}
         <div className="relative w-full md:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 dark:text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name or email..."
-            className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 shadow-2xs transition-all"
+            className="w-full bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-neutral-700 focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-neutral-100 placeholder:text-slate-400 dark:placeholder:text-neutral-500 shadow-2xs transition-all"
           />
         </div>
       </div>
 
       {/* Users Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-neutral-800 shadow-sm overflow-hidden">
         {loading && users.length === 0 ? (
-          <div className="py-16 text-center text-xs text-slate-500">
-            <Loader2 className="w-6 h-6 animate-spin text-indigo-600 mx-auto mb-2" />
+          <div className="py-16 text-center text-xs text-slate-500 dark:text-neutral-400">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-600 dark:text-indigo-400 mx-auto mb-2" />
             <span>Loading user accounts...</span>
           </div>
         ) : filteredUsers.length === 0 ? (
-          <div className="py-16 text-center text-xs text-slate-500">
-            <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="font-semibold text-slate-700">No users found</p>
-            <p className="text-slate-400 mt-0.5">
+          <div className="py-16 text-center text-xs text-slate-500 dark:text-neutral-400">
+            <Users className="w-8 h-8 text-slate-300 dark:text-neutral-600 mx-auto mb-2" />
+            <p className="font-semibold text-slate-700 dark:text-neutral-200">No users found</p>
+            <p className="text-slate-400 dark:text-neutral-500 mt-0.5">
               {searchQuery ? 'Try matching a different name or email' : 'No accounts with this status'}
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase tracking-wider text-[10px]">
+              <thead className="bg-slate-50 dark:bg-[#141414] border-b border-slate-200 dark:border-neutral-800 text-slate-600 dark:text-neutral-400 font-semibold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="px-5 py-3.5">User</th>
                   <th className="px-5 py-3.5">Email</th>
@@ -335,7 +335,7 @@ export default function UsersPage({ onPendingCountChange }) {
                   <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
+              <tbody className="divide-y divide-slate-100 dark:divide-neutral-800 text-slate-700 dark:text-neutral-300">
                 {filteredUsers.map((u) => {
                   const isSelf = u.id === currentUser?.id || u.role === 'admin';
                   const isOperating = actionLoadingId === u.id;
@@ -348,7 +348,7 @@ export default function UsersPage({ onPendingCountChange }) {
                   }) : '—';
 
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={u.id} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40 transition-colors">
                       {/* Name & Avatar */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         <div className="flex items-center space-x-3">
@@ -356,33 +356,33 @@ export default function UsersPage({ onPendingCountChange }) {
                             {(u.name || u.email || 'U').charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <div className="font-semibold text-slate-900 flex items-center space-x-1.5">
+                            <div className="font-semibold text-slate-900 dark:text-white flex items-center space-x-1.5">
                               <span>{u.name || 'Unnamed User'}</span>
                               {isSelf && (
-                                <span className="text-[10px] bg-indigo-50 text-indigo-700 font-semibold px-1.5 py-0.2 rounded border border-indigo-200">
+                                <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold px-1.5 py-0.2 rounded border border-indigo-200 dark:border-indigo-800/60">
                                   You
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono">ID: {u.id.substring(0, 12)}</div>
+                            <div className="text-[11px] text-slate-400 dark:text-neutral-500 font-mono">ID: {u.id.substring(0, 12)}</div>
                           </div>
                         </div>
                       </td>
 
                       {/* Email */}
-                      <td className="px-5 py-4 whitespace-nowrap font-medium text-slate-800">
+                      <td className="px-5 py-4 whitespace-nowrap font-medium text-slate-800 dark:text-neutral-200">
                         {u.email}
                       </td>
 
                       {/* Role */}
                       <td className="px-5 py-4 whitespace-nowrap">
                         {u.role === 'admin' ? (
-                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <Shield className="w-3 h-3 text-indigo-600" />
+                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                            <Shield className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
                             <span>Admin</span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 border border-slate-200/80 dark:border-neutral-700">
                             User
                           </span>
                         )}
@@ -394,14 +394,14 @@ export default function UsersPage({ onPendingCountChange }) {
                       </td>
 
                       {/* Created At */}
-                      <td className="px-5 py-4 whitespace-nowrap text-slate-500 text-[11px]">
+                      <td className="px-5 py-4 whitespace-nowrap text-slate-500 dark:text-neutral-400 text-[11px]">
                         {dateStr}
                       </td>
 
                       {/* Actions */}
                       <td className="px-5 py-4 whitespace-nowrap text-right">
                         {isSelf ? (
-                          <span className="text-[11px] text-slate-400 italic">Protected Admin Account</span>
+                          <span className="text-[11px] text-slate-400 dark:text-neutral-500 italic">Protected Admin Account</span>
                         ) : (
                           <div className="inline-flex items-center space-x-1.5">
                             {/* Pending State Actions: Approve & Reject */}
@@ -410,7 +410,7 @@ export default function UsersPage({ onPendingCountChange }) {
                                 <button
                                   onClick={() => setActionModal({ user: u, action: 'approve' })}
                                   disabled={isOperating}
-                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer active:scale-95"
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-colors cursor-pointer active:scale-95"
                                   title="Approve user registration"
                                 >
                                   {isOperating ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
@@ -419,7 +419,7 @@ export default function UsersPage({ onPendingCountChange }) {
                                 <button
                                   onClick={() => setActionModal({ user: u, action: 'reject' })}
                                   disabled={isOperating}
-                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer active:scale-95"
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 transition-colors cursor-pointer active:scale-95"
                                   title="Reject user registration"
                                 >
                                   <UserX className="w-3.5 h-3.5" />
@@ -433,7 +433,7 @@ export default function UsersPage({ onPendingCountChange }) {
                               <button
                                 onClick={() => setActionModal({ user: u, action: 'disable' })}
                                 disabled={isOperating}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer active:scale-95"
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800/60 transition-colors cursor-pointer active:scale-95"
                                 title="Disable user access immediately"
                               >
                                 {isOperating ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />}
@@ -446,7 +446,7 @@ export default function UsersPage({ onPendingCountChange }) {
                               <button
                                 onClick={() => setActionModal({ user: u, action: 'enable' })}
                                 disabled={isOperating}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer active:scale-95"
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-colors cursor-pointer active:scale-95"
                                 title="Re-enable account"
                               >
                                 {isOperating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
@@ -459,7 +459,7 @@ export default function UsersPage({ onPendingCountChange }) {
                               <button
                                 onClick={() => setActionModal({ user: u, action: 'approve' })}
                                 disabled={isOperating}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer active:scale-95"
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800/60 transition-colors cursor-pointer active:scale-95"
                                 title="Approve account"
                               >
                                 {isOperating ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
@@ -471,7 +471,7 @@ export default function UsersPage({ onPendingCountChange }) {
                             <button
                               onClick={() => setActionModal({ user: u, action: 'delete' })}
                               disabled={isOperating}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer active:scale-95"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer active:scale-95"
                               title="Delete user account and all their chats"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

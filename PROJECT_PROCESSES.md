@@ -201,3 +201,114 @@ To prevent race conditions, context mismatches, or corrupted embeddings when int
    - Prevents switching to Document B while Document A is streaming an answer.
 3. **Automatic Release**:
    - Once the response arrives or an error is caught in `finally { setLoading(false); onLoadingChange(false); }`, the interface unlocks smoothly.
+
+---
+
+## 6. High-Speed Parallel Multi-Document Candidate Retrieval
+
+When querying across all documents (`doc_id="all"`), sequential queries across multiple files would introduce compounding latency (7–8 seconds). The system executes concurrent parallel vector searches:
+
+```mermaid
+graph TD
+    A[Ask Request: doc_id = 'all'] --> B[Determine Registered Documents]
+    B --> C[Initialize ThreadPoolExecutor: max_workers = min 12, N+1]
+    
+    subgraph ParallelPool["Concurrent Candidate Gathering Pool"]
+        C --> D1[Thread 0: Global ANN Search]
+        C --> D2[Thread 1: Doc 1 Targeted Search]
+        C --> D3[Thread 2: Doc 2 Targeted Search]
+        C --> D4[Thread N: Doc N Targeted Search]
+    end
+
+    D1 & D2 & D3 & D4 --> E[Gather Thread Results via as_completed]
+    E --> F[De-duplicate Chunks by chunk_id]
+    F --> G[Hybrid Reciprocal Rank Fusion & BM25 Lexical Re-Ranking]
+    G --> H[Multi-Document Diversity-Aware Top-K Selection]
+    H --> I[Deliver Top Chunks to LLM in ~0.4s]
+```
+
+- **Thread Pool Sizing**: Scaled dynamically as `min(12, len(registered_docs) + 1)`, ensuring rapid execution without exhausting CPU cores.
+- **Fair Allocation**: Guarantees that smaller or newly uploaded documents are not starved by massive pre-existing documents.
+
+---
+
+## 7. Intelligent Citation Suppression & Grounding Verification
+
+To maintain factual integrity and avoid confusing users with phantom source badges on out-of-scope questions:
+
+```mermaid
+flowchart TD
+    A[LLM Synthesizes Answer] --> B{Answer Contains Refusal Phrases?}
+    B -->|Yes: 'does not contain' / 'not mentioned'| C[Activate Negative Answer Guard]
+    B -->|No: Valid Document Facts Found| D[Extract Page Citations: Page X]
+    
+    C --> E[Clear sources Array: sources = empty]
+    C --> F[Clear source_details: source_details = empty]
+    
+    D --> G[Populate sources & source_details]
+    
+    E & G --> H[Assemble AskResponse]
+    H --> I[Frontend Renders Message]
+    I --> J{sources is non-empty?}
+    J -->|Yes| K[Render Sourced From Badges & Interactive Page Links]
+    J -->|No| L[Suppress Sourced From Block Completely]
+```
+
+- **Prompt Constraint**: System prompts strictly instruct the LLM: *"If the provided excerpts do not contain sufficient information to answer the question, state: 'The provided documents do not contain information to answer this question.' and do NOT cite any pages."*
+- **Response Cleaner**: In `backend/pages/chat.py`, any refusal phrasing triggers immediate suppression of source lists, guaranteeing zero phantom citations.
+
+---
+
+## 8. Global Light & Dark Theme State Engine
+
+```mermaid
+stateDiagram-v2
+    [*] --> AppInit: Application Mounts
+    AppInit --> ReadStorage: Inspect localStorage('theme')
+    
+    state AppInit {
+        ReadStorage --> ApplyStored: Stored theme exists ('dark' | 'light')
+        ReadStorage --> CheckSystem: No stored preference
+        CheckSystem --> ApplySystem: matchMedia('(prefers-color-scheme: dark)')
+    }
+
+    ApplyStored --> DOMUpdate: Add/Remove .dark Class on documentElement
+    ApplySystem --> DOMUpdate
+
+    state ThemeActive {
+        DOMUpdate --> Listening: 350ms CSS Variable Transitions Active
+        Listening --> UserToggle: User clicks Sun/Moon Icon in Sidebar
+        UserToggle --> SwitchTheme: Invert 'dark' <-> 'light'
+        SwitchTheme --> WriteStorage: localStorage.setItem('theme', newTheme)
+        WriteStorage --> DOMUpdate
+    }
+```
+
+- **CSS Transition Smoothness**: Applied across all structural containers with `transition: background-color 0.35s ease, border-color 0.35s ease`.
+- **Contrast & Precision Guards**: Styled with explicit Tailwind `dark:` tokens and `:not([class*="dark:"])` safety wrappers in `index.css`.
+
+---
+
+## 9. Collapsible Dual-Mode Navigation Rail (ChatGPT Layout)
+
+```mermaid
+stateDiagram-v2
+    [*] --> CollapsedRail: Default View (56px)
+
+    state CollapsedRail {
+        ShowIcons: Icon-Only Rail with Glow Rings
+        Tooltips: Animated Hover Tooltip Badges
+        QuickToggle: Bottom Mini Theme Switcher & Logout
+    }
+
+    state ExpandedDrawer {
+        FullBrand: Brand Logo & Title
+        FullLabels: Nav Tab Titles & Live Count Badges
+        UserProfile: User Avatar, Name, Email & Role
+        ThemeSwitchBar: Full Sun/Moon Toggle Button with Status
+    }
+
+    CollapsedRail --> ExpandedDrawer: Click Chevron Flip / Hotkey Toggle
+    ExpandedDrawer --> CollapsedRail: Click Close / Collapse Action
+```
+

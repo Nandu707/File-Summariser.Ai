@@ -17,6 +17,64 @@
     color: #0f172a;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+
+  /* Smooth Theme Transition across All Themed Elements */
+  html,
+  body,
+  main,
+  aside,
+  header,
+  section,
+  nav,
+  footer,
+  div:not(.transition-none),
+  button:not(.transition-none),
+  input,
+  textarea,
+  select,
+  p,
+  span,
+  h1,
+  h2,
+  h3,
+  h4,
+  table,
+  th,
+  td {
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+    transition-duration: 350ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark * {
+    border-color: rgba(45, 55, 72, 0.6);
+  }
+
+  .dark body {
+    background-color: #171717;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(56, 189, 248, 0.06) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(18, 18, 18, 0.95) 0px, transparent 50%);
+    color: #f3f4f6;
+  }
+}
+
+/* Smooth Page Change Animation */
+@keyframes pageEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.996);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.page-enter-animation {
+  animation: pageEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, transform;
 }
 
 @layer utilities {
@@ -27,6 +85,13 @@
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(226, 232, 240, 0.9);
     box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+  }
+
+  .dark .glass-card {
+    background: rgba(33, 33, 33, 0.95);
+    border: 1px solid rgba(55, 65, 81, 0.8);
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+    color: #ececec;
   }
 
   .glass-card-hover {
@@ -44,6 +109,11 @@
     color: #0f172a;
     transition: all 0.2s ease;
   }
+  .dark .glass-input {
+    background: #262626;
+    border: 1px solid #404040;
+    color: #f3f4f6;
+  }
   .glass-input:focus {
     border-color: #6366f1;
     outline: none;
@@ -55,12 +125,149 @@
     border: 1px solid rgba(99, 102, 241, 0.2);
     color: #4338ca;
   }
+  .dark .glow-badge {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(59, 130, 246, 0.15));
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    color: #a5b4fc;
+  }
 }
 
-/* Custom sleek scrollbars for light theme */
+/* =================================================== */
+/* GLOBAL WHOLE-SITE DARK THEME OVERRIDES              */
+/* =================================================== */
+.dark section,
+.dark .chat-window,
+.dark main,
+.dark main > div > section {
+  background-color: #212121 !important;
+  background-image: none !important;
+  border-color: #2e2e2e !important;
+  color: #ececec !important;
+}
+
+.dark .bg-gradient-to-b {
+  background-image: none !important;
+  background-color: #171717 !important;
+}
+
+.dark section > div:first-child,
+.dark .chat-header {
+  background-color: #171717 !important;
+  border-color: #2e2e2e !important;
+  color: #f3f4f6 !important;
+}
+
+.dark section h2,
+.dark section h3,
+.dark main h1,
+.dark main h2,
+.dark main h3 {
+  color: #f3f4f6 !important;
+}
+
+/* Chat Input Bar & Textarea in Dark Mode */
+.dark section > div:last-child,
+.dark form[class*="relative"] {
+  border-color: #2e2e2e !important;
+}
+
+.dark textarea {
+  background-color: #262626 !important;
+  border-color: #383838 !important;
+  color: #f3f4f6 !important;
+}
+
+.dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+.dark textarea:focus {
+  background-color: #2a2a2a !important;
+  border-color: #6366f1 !important;
+}
+
+/* Dark mode cards, buttons, & message containers fallback */
+.dark .bg-white:not([class*="dark:bg-"]),
+.dark [class*="bg-white/"]:not([class*="dark:bg-"]) {
+  background-color: #1f1f1f !important;
+  border-color: #2f2f2f !important;
+  color: #e4e4e7 !important;
+}
+
+.dark .bg-slate-50:not([class*="dark:bg-"]),
+.dark [class*="bg-slate-50/"]:not([class*="dark:bg-"]) {
+  background-color: #1a1a1a !important;
+  border-color: #2e2e2e !important;
+  color: #e4e4e7 !important;
+}
+
+.dark .bg-slate-100:not([class*="dark:bg-"]),
+.dark [class*="bg-slate-100/"]:not([class*="dark:bg-"]) {
+  background-color: #262626 !important;
+  border-color: #383838 !important;
+  color: #e4e4e7 !important;
+}
+
+/* Text color adaptations - only apply when not overridden by explicit dark:text- tokens */
+.dark .text-slate-900:not([class*="dark:text-"]),
+.dark .text-slate-800:not([class*="dark:text-"]) {
+  color: #f4f4f5;
+}
+
+.dark .text-slate-700:not([class*="dark:text-"]),
+.dark .text-slate-600:not([class*="dark:text-"]) {
+  color: #d4d4d8;
+}
+
+.dark .text-slate-500:not([class*="dark:text-"]),
+.dark .text-slate-400:not([class*="dark:text-"]) {
+  color: #a1a1aa;
+}
+
+.dark input[type="text"],
+.dark input[type="search"],
+.dark select {
+  background-color: #262626 !important;
+  border-color: #3f3f46 !important;
+  color: #f4f4f5 !important;
+}
+
+.dark input[type="text"]::placeholder,
+.dark input[type="search"]::placeholder {
+  color: #71717a !important;
+}
+
+.dark .border-slate-200:not([class*="dark:border-"]),
+.dark .border-slate-200\/80:not([class*="dark:border-"]),
+.dark .border-slate-200\/90:not([class*="dark:border-"]),
+.dark .border-slate-100:not([class*="dark:border-"]) {
+  border-color: #2e2e2e;
+}
+
+/* Tables, Modals, and Cards in Dark Mode */
+.dark table th:not([class*="dark:bg-"]) {
+  background-color: #1a1a1a !important;
+  color: #d4d4d8 !important;
+  border-color: #2e2e2e !important;
+}
+
+.dark table td:not([class*="dark:border-"]) {
+  border-color: #2a2a2a !important;
+  color: #e4e4e7 !important;
+}
+
+.dark table tr:hover td:not([class*="dark:hover:bg-"]) {
+  background-color: #262626 !important;
+}
+
+/* Custom sleek scrollbars for light & dark theme */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.6) rgba(241, 245, 249, 0.8);
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: rgba(113, 113, 122, 0.6) rgba(30, 30, 30, 0.8);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -71,16 +278,25 @@
   background: rgba(241, 245, 249, 0.8);
   border-radius: 9999px;
 }
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(24, 24, 27, 0.8);
+}
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(148, 163, 184, 0.5);
   border-radius: 9999px;
   border: 1px solid transparent;
 }
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.5);
+}
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.8);
 }
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.8);
+}
 
-/* Global light scrollbars */
+/* Global scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -88,15 +304,27 @@
 ::-webkit-scrollbar-track {
   background: #f8fafc;
 }
+.dark ::-webkit-scrollbar-track {
+  background: #18181b;
+}
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
 }
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
 }
 
 * {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 #f8fafc;
+}
+.dark * {
+  scrollbar-color: #3f3f46 #18181b;
 }

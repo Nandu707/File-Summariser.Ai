@@ -51,12 +51,12 @@ export default function ConfirmModal({
   if (!isOpen || typeof document === 'undefined') return null;
 
   const iconStyles = {
-    rose: 'bg-rose-50 border-rose-200/80 text-rose-600',
-    emerald: 'bg-emerald-50 border-emerald-200/80 text-emerald-600',
-    amber: 'bg-amber-50 border-amber-200/80 text-amber-600',
-    indigo: 'bg-indigo-50 border-indigo-200/80 text-indigo-600',
-    slate: 'bg-slate-100 border-slate-200/80 text-slate-600'
-  }[iconVariant] || 'bg-rose-50 border-rose-200/80 text-rose-600';
+    rose: 'bg-rose-50 dark:bg-rose-950/50 border-rose-200/80 dark:border-rose-900/60 text-rose-600 dark:text-rose-400',
+    emerald: 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200/80 dark:border-emerald-800/60 text-emerald-600 dark:text-emerald-400',
+    amber: 'bg-amber-50 dark:bg-amber-950/50 border-amber-200/80 dark:border-amber-800/60 text-amber-600 dark:text-amber-400',
+    indigo: 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200/80 dark:border-indigo-800/60 text-indigo-600 dark:text-indigo-400',
+    slate: 'bg-slate-100 dark:bg-neutral-800 border-slate-200/80 dark:border-neutral-700 text-slate-600 dark:text-neutral-300'
+  }[iconVariant] || 'bg-rose-50 dark:bg-rose-950/50 border-rose-200/80 dark:border-rose-900/60 text-rose-600 dark:text-rose-400';
 
   const buttonStyles = {
     rose: 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 shadow-rose-600/25',
@@ -76,7 +76,7 @@ export default function ConfirmModal({
       }}
     >
       <div
-        className="w-full max-w-md bg-white rounded-2xl border border-slate-200/90 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
+        className="w-full max-w-md bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200/90 dark:border-neutral-800 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -84,7 +84,7 @@ export default function ConfirmModal({
           type="button"
           onClick={() => !isLoading && onClose()}
           disabled={isLoading}
-          className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+          className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-50"
           aria-label="Close dialog"
         >
           <X className="w-4 h-4" />
@@ -98,34 +98,34 @@ export default function ConfirmModal({
           )}
 
           <div className="flex-1 min-w-0 pt-0.5">
-            <h3 id="confirm-dialog-title" className="text-base font-bold text-slate-900 tracking-tight">
+            <h3 id="confirm-dialog-title" className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
               {title}
             </h3>
             {description && (
-              <p className="mt-1 text-xs text-slate-500 truncate">
+              <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400 truncate">
                 {description}
               </p>
             )}
 
             {user && (
-              <div className="mt-3.5 py-2 px-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center space-x-2.5">
+              <div className="mt-3.5 py-2 px-3 rounded-xl bg-slate-50 dark:bg-neutral-800/80 border border-slate-200/80 dark:border-neutral-700 flex items-center space-x-2.5">
                 <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-2xs">
                   {(user.name || user.email || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-slate-800 truncate">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-neutral-200 truncate">
                     {user.name || 'User'}
                   </p>
-                  <p className="text-[11px] text-slate-500 truncate">
+                  <p className="text-[11px] text-slate-500 dark:text-neutral-400 truncate">
                     {user.email}
                   </p>
                 </div>
                 {user.status && (
                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
-                    user.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                    user.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                    user.status === 'rejected' ? 'bg-rose-100 text-rose-700' :
-                    'bg-slate-200 text-slate-700'
+                    user.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60' :
+                    user.status === 'pending' ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60' :
+                    user.status === 'rejected' ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900/60' :
+                    'bg-slate-200 dark:bg-neutral-700 text-slate-700 dark:text-neutral-300'
                   }`}>
                     {user.status}
                   </span>
@@ -136,12 +136,12 @@ export default function ConfirmModal({
         </div>
 
         {/* Action Buttons */}
-        <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100">
+        <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100 dark:border-neutral-800">
           <button
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200/80 dark:hover:bg-neutral-700 border border-slate-200/60 dark:border-neutral-700 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
           >
             {cancelText}
           </button>
