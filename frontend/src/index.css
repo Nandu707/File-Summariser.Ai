@@ -7,6 +7,11 @@
     border-color: rgba(226, 232, 240, 0.9);
   }
   
+  /* Enable smooth scrolling globally */
+  html {
+    scroll-behavior: smooth;
+  }
+  
   body {
     background-color: #ffffff;
     background-image: 
@@ -18,8 +23,7 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Smooth Theme Transition across All Themed Elements */
-  html,
+  /* Smooth Theme Transition across Structural Themed Containers */
   body,
   main,
   aside,
@@ -27,22 +31,10 @@
   section,
   nav,
   footer,
-  div:not(.transition-none),
-  button:not(.transition-none),
-  input,
-  textarea,
-  select,
-  p,
-  span,
-  h1,
-  h2,
-  h3,
-  h4,
-  table,
-  th,
-  td {
-    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
-    transition-duration: 350ms;
+  .glass-card,
+  .chat-window {
+    transition-property: background-color, border-color, color;
+    transition-duration: 300ms;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -60,20 +52,20 @@
   }
 }
 
-/* Smooth Page Change Animation */
+/* Silky Smooth Page Change Animation (GPU-accelerated) */
 @keyframes pageEnter {
   0% {
     opacity: 0;
-    transform: translateY(8px) scale(0.996);
+    transform: translate3d(0, 6px, 0) scale(0.998);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 .page-enter-animation {
-  animation: pageEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: pageEnter 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: opacity, transform;
 }
 
@@ -263,37 +255,38 @@
 /* Custom sleek scrollbars for light & dark theme */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.6) rgba(241, 245, 249, 0.8);
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
+  scroll-behavior: smooth;
 }
 
 .dark .custom-scrollbar {
-  scrollbar-color: rgba(113, 113, 122, 0.6) rgba(30, 30, 30, 0.8);
+  scrollbar-color: rgba(113, 113, 122, 0.5) transparent;
+  scroll-behavior: smooth;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(241, 245, 249, 0.8);
-  border-radius: 9999px;
+  background: transparent;
 }
 .dark .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(24, 24, 27, 0.8);
+  background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
+  background: rgba(148, 163, 184, 0.4);
   border-radius: 9999px;
-  border: 1px solid transparent;
+  transition: background-color 0.2s ease;
 }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(113, 113, 122, 0.5);
+  background: rgba(113, 113, 122, 0.4);
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.8);
+  background: rgba(99, 102, 241, 0.7);
 }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(161, 161, 170, 0.8);
+  background: rgba(129, 140, 248, 0.7);
 }
 
 /* Global scrollbars */

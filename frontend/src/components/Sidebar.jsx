@@ -237,15 +237,24 @@ export default function Sidebar({
   return (
     <>
       {/* ======================================================== */}
-      {/* 1. COLLAPSED VIEW: Slim Icon Rail (~56px) */}
+      {/* UNIFIED SIDEBAR: Smooth width gliding & seamless crossfade */}
       {/* ======================================================== */}
-      {isCollapsed && (
-        <aside
-          aria-label="Sidebar navigation collapsed rail"
-          className={`w-14 h-screen flex flex-col items-center justify-between py-3.5 select-none flex-shrink-0 z-40 transition-colors duration-300 ${
-            isDark
-              ? 'bg-[#171717] border-r border-[#262626] text-neutral-200'
-              : 'bg-white border-r border-slate-200/90 text-slate-700 shadow-2xs'
+      <aside
+        aria-label="Sidebar navigation"
+        className={`h-screen flex flex-col select-none flex-shrink-0 z-40 relative overflow-hidden transition-[width,background-color,border-color] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${
+          isCollapsed ? 'w-14' : 'w-[260px]'
+        } ${
+          isDark
+            ? 'bg-[#171717] border-r border-[#262626] text-neutral-200'
+            : 'bg-white border-r border-slate-200/90 text-slate-700 shadow-2xs'
+        }`}
+      >
+        {/* 1. COLLAPSED VIEW: Slim Icon Rail (~56px) */}
+        <div
+          className={`w-14 h-full flex flex-col items-center justify-between py-3.5 absolute inset-y-0 left-0 transition-all duration-200 ease-in-out ${
+            isCollapsed
+              ? 'opacity-100 pointer-events-auto z-10 translate-x-0'
+              : 'opacity-0 pointer-events-none -z-10 -translate-x-2'
           }`}
         >
           {/* Top Actions: Logo, Toggle, New Chat, Nav Icons */}
@@ -460,19 +469,14 @@ export default function Sidebar({
               </div>
             </button>
           </div>
-        </aside>
-      )}
+        </div>
 
-      {/* ======================================================== */}
-      {/* 2. EXPANDED VIEW: Full Sidebar (~260px) */}
-      {/* ======================================================== */}
-      {!isCollapsed && (
-        <aside
-          aria-label="Sidebar navigation"
-          className={`w-[260px] h-screen flex flex-col select-none flex-shrink-0 z-40 animate-in fade-in slide-in-from-left-2 duration-200 transition-colors ${
-            isDark
-              ? 'bg-[#171717] text-neutral-200 border-r border-[#262626]'
-              : 'bg-white text-slate-800 border-r border-slate-200/90 shadow-2xs'
+        {/* 2. EXPANDED VIEW: Full Sidebar (~260px) */}
+        <div
+          className={`w-[260px] h-full flex flex-col absolute inset-y-0 left-0 transition-all duration-200 ease-in-out ${
+            !isCollapsed
+              ? 'opacity-100 pointer-events-auto z-10 translate-x-0'
+              : 'opacity-0 pointer-events-none -z-10 -translate-x-3'
           }`}
         >
           {/* Header Bar: Brand Logo & Title + Theme Toggle, Search & Collapse */}
@@ -996,8 +1000,8 @@ export default function Sidebar({
               <LogOut className="w-4 h-4" />
             </button>
           </div>
-        </aside>
-      )}
+        </div>
+      </aside>
 
       {/* Delete Chat Confirmation Modal */}
       {sessionToDelete && typeof document !== 'undefined' && createPortal(
@@ -1010,41 +1014,41 @@ export default function Sidebar({
           }}
         >
           <div
-            className="w-full max-w-md bg-white rounded-2xl border border-slate-200/90 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
+            className="w-full max-w-md bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200/90 dark:border-neutral-800 shadow-2xl p-6 sm:p-7 relative overflow-hidden animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => setSessionToDelete(null)}
-              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="absolute top-4 right-4 p-1.5 rounded-xl text-slate-400 dark:text-neutral-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
               aria-label="Close dialog"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="flex items-start space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-center justify-center flex-shrink-0 text-rose-600 shadow-2xs">
-                <Trash2 className="w-6 h-6 text-rose-600" />
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200/80 dark:border-rose-900/60 flex items-center justify-center flex-shrink-0 text-rose-600 dark:text-rose-400 shadow-2xs">
+                <Trash2 className="w-6 h-6 text-rose-600 dark:text-rose-400" />
               </div>
 
               <div className="flex-1 min-w-0 pt-0.5">
-                <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">
                   Delete conversation
                 </h3>
-                <p className="mt-1.5 text-xs text-slate-500 leading-relaxed">
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-neutral-400 leading-relaxed">
                   This conversation history will be permanently deleted and cannot be undone.
                 </p>
 
                 {sessionToDelete && (
-                  <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center space-x-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center justify-center flex-shrink-0">
+                  <div className="mt-3.5 py-2.5 px-3 rounded-xl bg-slate-50 dark:bg-neutral-800/80 border border-slate-200/80 dark:border-neutral-700 flex items-center space-x-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-center flex-shrink-0">
                       <MessageSquare className="w-3.5 h-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-slate-800 truncate" title={sessionToDelete.title}>
+                      <p className="text-xs font-semibold text-slate-800 dark:text-neutral-200 truncate" title={sessionToDelete.title}>
                         {sessionToDelete.title}
                       </p>
-                      <p className="text-[11px] text-slate-500 truncate">
+                      <p className="text-[11px] text-slate-500 dark:text-neutral-400 truncate">
                         {sessionToDelete.message_count || 0} messages • {sessionToDelete.scope === 'all' ? 'All files' : sessionToDelete.file_name || 'Document'}
                       </p>
                     </div>
@@ -1053,11 +1057,11 @@ export default function Sidebar({
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100">
+            <div className="mt-6 flex items-center justify-end space-x-2.5 pt-4 border-t border-slate-100 dark:border-neutral-800">
               <button
                 type="button"
                 onClick={() => setSessionToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 transition-all cursor-pointer active:scale-95"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200/80 dark:hover:bg-neutral-700 transition-all cursor-pointer active:scale-95"
               >
                 Cancel
               </button>

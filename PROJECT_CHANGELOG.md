@@ -27,6 +27,7 @@ timeline
     Milestone 16 : Collapsible Dual-Mode Sidebar & Header Consolidation : ChatGPT-Style 56px/260px Rail : Max Viewport Height : Tab Tooltips
     Milestone 17 : Global Light & Dark Theme System : Persistent ThemeContext : 350ms Smooth CSS Transitions : Route Enter Animations
     Milestone 18 : Full Dark Mode Color Harmonization & Accessibility : High-Contrast Follow-Up Cards : Sleek Status Badges : Index.css Precision Guards
+    Milestone 19 : Fluid Motion Architecture & Smooth Animations : Continuous Width Gliding : Hardware-Accelerated Page Transitions : Auto-Scroll
 ```
 
 ---
@@ -269,5 +270,22 @@ timeline
     3. Overhauled [`DocumentsPage.jsx`](file:///e:/Task-RAG/frontend/src/pages/DocumentsPage.jsx): Converted upload dropzones, live upload queue task cards, non-admin banner, document cards, and chunk badges to cohesive dark mode aesthetics.
     4. Overhauled [`ConfirmModal.jsx`](file:///e:/Task-RAG/frontend/src/components/ConfirmModal.jsx) & [`DocumentPageModal.jsx`](file:///e:/Task-RAG/frontend/src/components/DocumentPageModal.jsx): Updated modal backdrops, dialog cards, user cards, and pagination toolbars with seamless dark mode tokens.
     5. Refined [`index.css`](file:///e:/Task-RAG/frontend/src/index.css): Replaced blunt global overrides with precision `:not([class*="dark:"])` guards, ensuring Tailwind's explicit dark tokens take precedence without style collisions.
+
+---
+
+### Milestone 19: Fluid Motion Architecture & Global Animation Optimization
+- **Continuous Sidebar Width Gliding (`Sidebar.jsx`)**:
+  - Replaced conditional unmounting of `<aside>` with a single, persistent structural element that interpolates width between `56px` (`w-14`) and `260px` (`w-[260px]`) using `transition-[width] duration-300 ease-[cubic-bezier(0.2,0,0,1)]`.
+  - Implemented seamless 200ms opacity and subtle translation crossfades between the collapsed icon rail and expanded drawer, eliminating abrupt DOM jumps and layout stutter.
+- **Snappy Micro-Interactions**:
+  - Scoped theme color transitions exclusively to structural containers (`body`, `main`, `aside`, `header`, `section`, `nav`, `footer`, `.glass-card`, `.chat-window`), eliminating the 350ms delay previously forced on buttons, links, tabs, and table rows.
+  - Buttons, chips, and interactive cards now respond instantly with natural 150ms-200ms easing curves.
+- **Hardware-Accelerated Page Transitions**:
+  - Optimized `@keyframes pageEnter` in `index.css` using GPU `translate3d(0, 6px, 0)` and a high-fidelity `cubic-bezier(0.16, 1, 0.3, 1)` curve for silky-smooth tab navigation.
+- **Smooth Auto-Scroll on Chat Updates**:
+  - Added an active `useEffect` in `ChatWindow.jsx` targeting `messagesEndRef` with `behavior: 'smooth'` whenever new user or assistant messages arrive or when the LLM is loading.
+- **Refined Custom Scrollbars**:
+  - Updated `.custom-scrollbar` with transparent track backgrounds, rounded thumbs with indigo hover highlights, and smooth scroll momentum.
+
 
 

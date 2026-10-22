@@ -218,6 +218,13 @@ export default function ChatWindow({
     };
   }, []);
 
+  // Smooth auto-scroll to bottom whenever messages or loading state changes
+  useEffect(() => {
+    if (messages.length > 0 || loading) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [messages, loading]);
+
   const handleScopeSelect = async (targetScope, targetDoc = null) => {
     setShowScopeDropdown(false);
     setScopeSearch('');
